@@ -104,10 +104,10 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
 
 <div class="wrap">
 <header>
-  <span class="eyebrow">coding-agent-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02</span>
+  <span class="eyebrow">coding-agent-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02 · Codex and Ollama cloud judges added 2026-10-10</span>
   <h1>Which model should read what comes from outside</h1>
   <p class="lede">The live setup scores every text from outside with Horizon-Labs' classifier and laya:en, and lets Claude Sonnet decide everything either finds suspect. It catches 83%, 94% and 79% of the injections in three held-out test sets, the last one hidden inside tool output, and wrongly flags 7 of our 240 own texts. A clean outside read costs about a quarter of a second; roughly 40% of them wait about 2 seconds more for Claude.</p>
-  <p class="meta">Scoring server: Apple M5 Pro, 24 GB, on the Mac that hosts the Windows VM. Hook: Windows 11 ARM64 VM, 8 GB. Models run locally; only Claude, which already reads this session, sees text off the machine.</p>
+  <p class="meta">Scoring server: Apple M5 Pro, 24 GB, on the Mac that hosts the Windows VM. Hook: Windows 11 ARM64 VM, 8 GB. Models run locally; only the session's own provider sees text off the machine: Claude for Claude Code sessions, and Codex for Codex sessions when the server runs a Codex judge.</p>
 </header>
 
 <section>
@@ -259,6 +259,38 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
 </section>
 
 <section>
+  <span class="eyebrow">Other judges · 2026-10-10</span>
+  <h2>gemma4:cloud judges as well as Sonnet 5; Codex models miss more</h2>
+  <p>Each judge read the texts the live server would hand it: whatever Horizon-Labs scores 0.5 to 0.9, plus whatever laya:en scores 0.5 or more, from the deepset and xTRam1 test splits. Only public texts were sent, because these judges run outside Anthropic: 175 texts, 122 of them injections. Every model got the judge prompt Claude gets. Codex models ran through Codex CLI 0.162.1 at reasoning effort low, Ollama cloud models through Ollama 0.40.1; Sonnet 5's verdicts and times are from the 2026-10-07 band run. <strong>gemma4:cloud</strong> made as many wrong calls as Sonnet 5, 18 of 175, and answered faster, but the two disagree on 16 texts.</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Judge</th><th class="n">Caught</th><th class="n">False alarms</th><th class="n">Wrong</th><th class="n">Same verdict as Sonnet 5</th><th class="n">Median</th><th class="n">Slowest</th></tr></thead>
+    <tbody>
+      <tr class="live"><td>Claude Sonnet 5, thinking off<span class="chip">live</span></td><td class="n">117 / 122</td><td class="n">13 / 53</td><td class="n">18</td><td class="n dim">–</td><td class="n">1.7 s</td><td class="n">4.6 s</td></tr>
+      <tr><td>gemma4:cloud<small>Ollama cloud</small></td><td class="n">117 / 122</td><td class="n">13 / 53</td><td class="n good">18</td><td class="n">159 / 175</td><td class="n good">1.0 s</td><td class="n">4.1 s</td></tr>
+      <tr><td>glm-5.3:cloud<small>Ollama cloud</small></td><td class="n">115 / 122</td><td class="n">17 / 53</td><td class="n">24</td><td class="n">161 / 175</td><td class="n bad">8.1 s</td><td class="n bad">67.7 s</td></tr>
+      <tr><td>glm-5.3-flash:cloud<small>Ollama cloud; 1 call timed out at 120 s</small></td><td class="n good">119 / 121</td><td class="n">22 / 53</td><td class="n">24</td><td class="n">158 / 174</td><td class="n">3.4 s</td><td class="n bad">120 s</td></tr>
+      <tr><td>deepseek-v4.1-flash:cloud<small>Ollama cloud</small></td><td class="n">117 / 122</td><td class="n bad">27 / 53</td><td class="n">32</td><td class="n">151 / 175</td><td class="n">1.9 s</td><td class="n">7.2 s</td></tr>
+      <tr><td>gpt-5.6-sol<small>Codex CLI; 10 calls hit the usage limit</small></td><td class="n bad">101 / 119</td><td class="n">14 / 46</td><td class="n">32</td><td class="n">142 / 165</td><td class="n">3.8 s</td><td class="n">12.4 s</td></tr>
+      <tr><td>deepseek-v4-pro:cloud<small>Ollama cloud</small></td><td class="n bad">107 / 122</td><td class="n">19 / 53</td><td class="n">34</td><td class="n">143 / 175</td><td class="n">3.4 s</td><td class="n">13.7 s</td></tr>
+    </tbody>
+  </table></div>
+  <p>Seven Codex models were first screened on an even sample of 24 injections and 24 benign texts from the same band. None matched Sonnet 5 there, which caught all 24 with 4 false alarms. <strong>gpt-6.1-sol</strong> is the suggested Codex judge: it caught all 24 and, by third-party list prices of 2026-10-04, costs $2 / $10 per million input / output tokens against gpt-5.6-sol's $5 / $30. Its full run was cut short by the Codex usage limit.</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Codex model</th><th class="n">Caught</th><th class="n">False alarms</th><th class="n">Median</th></tr></thead>
+    <tbody>
+      <tr class="live"><td>gpt-6.1-sol<span class="chip">suggested</span></td><td class="n good">24 / 24</td><td class="n">10 / 24</td><td class="n">4.6 s</td></tr>
+      <tr><td>gpt-5.6-sol</td><td class="n">22 / 24</td><td class="n">6 / 24</td><td class="n">3.8 s</td></tr>
+      <tr><td>gpt-5.6-terra</td><td class="n">22 / 24</td><td class="n">8 / 24</td><td class="n">3.7 s</td></tr>
+      <tr><td>gpt-6-astra</td><td class="n good">24 / 24</td><td class="n bad">13 / 24</td><td class="n">4.5 s</td></tr>
+      <tr><td>gpt-6-sol</td><td class="n">20 / 24</td><td class="n">9 / 24</td><td class="n">3.9 s</td></tr>
+      <tr><td>gpt-5.6-luna</td><td class="n">20 / 24</td><td class="n">6 / 24</td><td class="n">3.7 s</td></tr>
+      <tr><td>gpt-6-luna</td><td class="n bad">16 / 24</td><td class="n">4 / 24</td><td class="n">3.2 s</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The Codex judge runs as <code>codex exec</code> with no user config, rules, hooks, plugins or saved session, in a read-only sandbox; Codex has no switch to turn its shell tool off. It takes text from Codex sessions only, and draws on the same ChatGPT usage limit as those sessions. An Ollama model can join the live server only as a further opinion (<code>--judge-url</code>), which can add a flag but not clear one, and a <code>:cloud</code> model sends the text to Ollama's cloud. On the same 48-text sample, gemma4:cloud caught 23 with 7 false alarms.</p>
+</section>
+
+<section>
   <span class="eyebrow">Speed in use</span>
   <h2>What a tool call pays for the check</h2>
   <p>Timed through the real hook with the live configuration, median of five runs on the Windows VM. Most of the fixed cost is Python starting; only outside text travels to the Mac, and only flagged text waits for Claude.</p>
@@ -289,7 +321,8 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
     <li><strong>Young software.</strong> Horizon-Labs v2, laya and Ollaya were between six and eleven days old when measured, tev1 and nimble about a day old, and their publishers' own benchmarks are unaudited. Together AI notes it has not fully tested tev1 against prompt injection.</li>
     <li><strong>A tripwire, not a boundary.</strong> A detected injection becomes a note and, when confirmed, a notification; nothing is blocked on it. Outgoing secrets and personal IDs are blocked.</li>
     <li><strong>Long texts.</strong> laya:en reads about 512 tokens, so as a screen it sees the start of a long ticket; Horizon-Labs reads the whole text in overlapping windows. tev1 rejects anything over 2,050 tokens, so the benchmark splits such a text in halves and keeps the higher score; only 6 of the 1,338 samples are over 4,000 characters.</li>
-    <li><strong>Claude is the linchpin.</strong> If it cannot run (an expired token, say), the grey zone gets no verdict and only Horizon-Labs' 0.9 flags remain.</li>
+    <li><strong>The judge is the linchpin.</strong> If it cannot run (an expired Claude token, a used-up Codex limit), the grey zone gets no verdict and only Horizon-Labs' 0.9 flags remain.</li>
+    <li><strong>Judges compared on public text only.</strong> The 2026-10-10 judges never saw our own tickets and notes, so their false alarms on our traffic are unmeasured; the band has 53 benign texts.</li>
   </ul>
 </section>
 </div>
