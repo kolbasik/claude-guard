@@ -302,6 +302,22 @@ same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
   so it costs its seconds only on suspect text. `openai/gpt-oss-safeguard-20b`
   (Apache-2.0, ungated, about 14 GB) is built for classifying against a written
   policy; `ibm-granite/granite-guardian-3.3-8b` also takes custom criteria.
+  Ollama's cloud models work through the same endpoint. Measured 2026-10-10
+  with Ollama 0.40.1 on the public band (122 injections, 53 benign texts from
+  deepset and xTRam1; `bench/judge.py --band chat-<model> --public-only`):
+
+  | Judge | Injections caught | False alarms | p50 | Slowest |
+  |---|---|---|---|---|
+  | `claude-sonnet-5` (same texts) | 117 | 13 | 1.7 s | 4.6 s |
+  | `gemma4:cloud` | 117 | 13 | 1.0 s | 4.1 s |
+  | `glm-5.3:cloud` | 115 | 17 | 8.1 s | 67.7 s |
+  | `deepseek-v4.1-flash:cloud` | 117 | 27 | 1.9 s | 7.2 s |
+  | `glm-5.3-flash:cloud` | 119 of 121 | 22 | 3.4 s | 120 s (1 timeout) |
+  | `deepseek-v4-pro:cloud` | 107 | 19 | 3.4 s | 13.7 s |
+
+  `gemma4:cloud` matched Sonnet 5 on these texts at about half the time. A
+  `:cloud` model sends the text to Ollama's cloud, so our own tickets and notes
+  were not part of this run.
 - Models are not bundled. Check a model's licence before sharing it; Prompt
   Guard 2, for one, is under the Llama 4 Community License.
 

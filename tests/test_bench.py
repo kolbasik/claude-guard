@@ -170,5 +170,30 @@ class JudgeVariantTests(unittest.TestCase):
         self.assertEqual(aliases, [])
 
 
+class VariantTests(unittest.TestCase):
+    def test_codex_and_chat_variants_name_any_model(self):
+        # Arrange
+        names = ["codex-gpt-6.1-sol", "chat-glm-5.3-flash:cloud", "sonnet-no-thinking"]
+        # Act
+        accepted = [judge.variant_name(n) for n in names]
+        # Assert
+        self.assertEqual(accepted, names)
+
+    def test_unknown_variant_is_refused(self):
+        # Arrange
+        name = "gpt-6.1-sol"
+        # Act / Assert
+        with self.assertRaises(judge.argparse.ArgumentTypeError):
+            judge.variant_name(name)
+
+    def test_band_file_name_is_file_safe(self):
+        # Arrange
+        names = ["chat-glm-5.3-flash:cloud", "sonnet-no-thinking"]
+        # Act
+        files = [judge.score_name(n) for n in names]
+        # Assert
+        self.assertEqual(files, ["chat-glm-5.3-flash-cloud", "claude-sonnet-no-thinking"])
+
+
 if __name__ == "__main__":
     unittest.main()

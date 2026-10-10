@@ -169,7 +169,9 @@ score on another machine). Every run saves per-sample scores, so
 or with `--band` (and `--also <model>:<threshold>`) records Claude's verdicts on
 everything a setup would send it, reusing earlier verdicts, so `--combine` can
 score setups where Claude decides. Codex judges are variants named `codex-<model>`
-(`--codex-bin`, `--jobs` to run several at once); `--public-only` keeps the
+(`--codex-bin`), and any model behind an OpenAI-compatible endpoint, such as an
+Ollama `:cloud` model, is `chat-<model>` (`--chat-url`, default the local
+Ollama); `--jobs` runs several at once; `--public-only` keeps the
 user's own benign texts away from the judge, and `--sample N` judges N
 injections and N benign texts of the band. `--datasets aib` adds AgentInjectionBench
 (injections inside tool output); give each sample set its own `--scores` folder.

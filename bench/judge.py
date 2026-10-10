@@ -40,9 +40,19 @@ VARIANTS = {
     "sonnet55-no-thinking": ("claude-sonnet-5-5", False, server.JUDGE_PROMPT),
     "haiku55-no-thinking": ("claude-haiku-5-5", False, server.JUDGE_PROMPT),
 }
-# Codex judges (`codex exec`, reasoning effort low), named by the model they run.
-CODEX_VARIANTS = {f"codex-{m}": m for m in ("gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna",
-                                             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")}
+OTHER_JUDGES = ("codex-", "chat-")
+
+
+def variant_name(v):
+    """A Claude variant, codex-<model> (`codex exec`, reasoning effort low) or chat-<model> (--chat-url)."""
+    if v in VARIANTS or v.startswith(OTHER_JUDGES):
+        return v
+    raise argparse.ArgumentTypeError(f"{v}: use one of {', '.join(VARIANTS)}, codex-<model> or chat-<model>")
+
+
+def score_name(variant):
+    """The score file a --band run saves; ':' in an Ollama tag is not file-safe on Windows."""
+    return (variant if variant.startswith(OTHER_JUDGES) else "claude-" + variant).replace(":", "-")
 
 
 def flagged_by_cascade(th=0.9, screen=0.5):
@@ -55,11 +65,13 @@ def flagged_by_cascade(th=0.9, screen=0.5):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--positives", type=int, default=30, help="flagged injections to judge; every flagged benign text is judged")
-    ap.add_argument("--variant", nargs="*", default=list(VARIANTS), choices=list(VARIANTS) + list(CODEX_VARIANTS))
+    ap.add_argument("--variant", nargs="*", default=list(VARIANTS), type=variant_name)
     ap.add_argument("--benign-file", nargs="*", default=[".cache/bench/local-benign.jsonl"])
     ap.add_argument("--claude-bin", default="claude")
     ap.add_argument("--claude-token-file")
     ap.add_argument("--codex-bin", default="codex")
+    ap.add_argument("--chat-url", default="http://127.0.0.1:11434/v1",
+                    help="OpenAI-compatible endpoint for chat-<model> judges; the default is a local Ollama")
     ap.add_argument("--jobs", type=int, default=1, help="texts judged at once")
     ap.add_argument("--public-only", action="store_true",
                     help="never send --benign-file texts to the judge; they still align the saved scores")
@@ -68,7 +80,7 @@ def main():
     ap.add_argument("--scores", default="scores", help="folder under .cache/bench holding this sample set's score files")
     ap.add_argument("--also", nargs="*", default=[], metavar="MODEL:THRESHOLD",
                     help="with --band, also judge texts a saved model scores at or above THRESHOLD, e.g. ollaya-laya-en:0.5")
-    ap.add_argument("--band", metavar="VARIANT", choices=list(VARIANTS) + list(CODEX_VARIANTS),
+    ap.add_argument("--band", metavar="VARIANT", type=variant_name,
                     help="judge only what Horizon-Labs is unsure of (0.5 to 0.9) with VARIANT, and save the verdicts "
                          "as a score file, so score.py --combine can compare Horizon-Labs -> Claude with other cascades")
     args = ap.parse_args()
@@ -99,7 +111,7 @@ def main():
         if args.sample:
             spread = lambda xs: xs[::max(1, len(xs) // args.sample)][:args.sample]   # noqa: E731
             band = spread([i for i in band if samples[i][1] == 1]) + spread([i for i in band if samples[i][1] == 0])
-        name = args.band if args.band in CODEX_VARIANTS else "claude-" + args.band
+        name = score_name(args.band)
         path = os.path.join(score.SCORES, f"{name}.jsonl")
         # Verdicts from an earlier run are reused, so widening the band only judges what is new.
         earlier = {i: r["score"] >= 0.5 for i, r in enumerate(score.load_scores(name)) if r["score"] is not None} \
@@ -135,8 +147,15 @@ def main():
 def judge_all(indexes, variant, samples, args):
     """The judge's verdict (True = injection) on each index; errors are counted, not raised."""
     cache = os.path.join(HERE, "..", ".cache")
-    if variant in CODEX_VARIANTS:
-        return codex_all(indexes, variant, samples, args, cache)
+    if variant.startswith("codex-"):
+        model = variant[len("codex-"):]
+        # Each call gets its own empty working folder.
+        return parallel(indexes, samples, args, lambda text, i: server.codex_judge(text, SimpleNamespace(
+            codex_cmd=[args.codex_bin], codex_model=model, codex_timeout=120,
+            codex_cwd=os.path.join(cache, "codex-judge", f"cwd-{i}"))))
+    if variant.startswith("chat-"):
+        model = variant[len("chat-"):]
+        return parallel(indexes, samples, args, lambda text, i: server.judge(args.chat_url, model, text, 120) >= 0.5)
     model, thinking, prompt = VARIANTS[variant]
     judge_args = SimpleNamespace(claude_cmd=[args.claude_bin], claude_model=model, claude_timeout=60,
                                  claude_token_file=args.claude_token_file,
@@ -159,16 +178,14 @@ def judge_all(indexes, variant, samples, args):
     return verdicts, times, errors
 
 
-def codex_all(indexes, variant, samples, args, cache):
-    """Codex's verdicts, --jobs at a time; each call gets its own empty working folder."""
+def parallel(indexes, samples, args, fn):
+    """fn(text, index)'s verdicts, --jobs at a time; errors are counted, not raised."""
     from concurrent.futures import ThreadPoolExecutor
 
     def one(i):
-        judge_args = SimpleNamespace(codex_cmd=[args.codex_bin], codex_model=CODEX_VARIANTS[variant], codex_timeout=120,
-                                     codex_cwd=os.path.join(cache, "codex-judge", f"cwd-{i}"))
         t = time.perf_counter()
         try:
-            return i, server.codex_judge(samples[i][0], judge_args), time.perf_counter() - t
+            return i, fn(samples[i][0], i), time.perf_counter() - t
         except Exception:
             return i, None, time.perf_counter() - t
 
