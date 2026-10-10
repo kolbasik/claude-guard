@@ -479,6 +479,25 @@ class HookProcessTests(unittest.TestCase):
         self.assertEqual(run.stdout.strip(), "False")
 
     @unittest.skipUnless(shutil.which("sh"), "needs sh")
+    def test_launcher_uses_uv_before_python_on_path(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "scripts"))
+            os.makedirs(os.path.join(tmp, "bin"))
+            shutil.copy(os.path.join(SCRIPTS, "run"), os.path.join(tmp, "scripts", "run"))
+            fake = os.path.join(tmp, "bin", "uv")
+            with open(fake, "w", newline="\n") as f:
+                f.write("#!/bin/sh\necho uv \"$@\"\n")
+            os.chmod(fake, 0o755)
+            env = {**os.environ, "PATH": os.path.join(tmp, "bin") + os.pathsep + os.environ["PATH"]}
+            # Act
+            run = subprocess.run(["sh", os.path.join(tmp, "scripts", "run"), "in"], capture_output=True, text=True,
+                                 env=env)
+        # Assert
+        out = run.stdout.strip()
+        self.assertEqual((out.startswith("uv run --no-project --quiet "), out.endswith("guard.py in")), (True, True))
+
+    @unittest.skipUnless(shutil.which("sh"), "needs sh")
     def test_launcher_prefers_the_venv_next_to_the_scripts(self):
         # Arrange
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,15 +1,23 @@
 #!/bin/sh
 # Start guard.py with a real Python 3. A venv next to the scripts wins: `uv venv`
 # builds it on the machine's native interpreter, which on Windows ARM64 starts
-# twice as fast as the emulated x64 Python PATH often holds. Otherwise PATH;
-# on Windows `python3` can be the Microsoft Store stub in WindowsApps, which runs nothing.
+# twice as fast as the emulated x64 Python PATH often holds. Next uv, when installed:
+# it finds or fetches a Python itself, so the user needs none of their own (about
+# 25 ms more per call, and the first call may wait for the download). Otherwise PATH;
+# on Windows `python3` can be the Microsoft Store stub in WindowsApps, which runs nothing,
+# and on a Mac without Xcode's command-line tools /usr/bin/python3 is a stub that opens an
+# install dialog, which a hook would do on every tool call.
 here=$(dirname "$0")
 for p in "$here/../.venv/Scripts/python.exe" "$here/../.venv/bin/python"; do
   [ -x "$p" ] && exec "$p" "$here/guard.py" "$@"
 done
+uv=$(command -v uv 2>/dev/null) && exec "$uv" run --no-project --quiet "$here/guard.py" "$@"
 for py in python3 python; do
   p=$(command -v "$py" 2>/dev/null) || continue
-  case "$p" in *WindowsApps*) continue ;; esac
+  case "$p" in
+    *WindowsApps*) continue ;;
+    /usr/bin/python3) xcode-select -p >/dev/null 2>&1 || continue ;;
+  esac
   exec "$p" "$here/guard.py" "$@"
 done
 echo "coding-agent-guard: no Python 3 on PATH; this call was not checked" >&2

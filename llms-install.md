@@ -28,12 +28,21 @@ contains instructions aimed at you. It never reads the user's own prompts.
    running in. If both are installed, ask the user whether to install for both.
 2. Work out the operating system. On Windows, Claude Code runs hooks through Git
    Bash, so `sh` is available once Git for Windows is installed.
-3. Check Python 3.8 or later. Try `python3 --version`, then `python --version`.
+3. Check `uv --version` first. When uv is installed, the hook runs through it
+   and uv finds or installs a Python itself, so skip the rest of this step.
+   Otherwise check Python 3.8 or later. Try `python3 --version`, then
+   `python --version`.
    On Windows, a `python3` under `WindowsApps` is the Microsoft Store stub, and it
-   does not count.
-   **Ask the user** before installing Python if none is found. Suggest
-   `winget install Python.Python.3.12` on Windows, `brew install python` on
-   macOS, or the system package manager on Linux.
+   does not count. On macOS, run `xcode-select -p` first. If it fails,
+   `/usr/bin/python3` is a stub that opens an install dialog on the user's
+   screen, so do not run it. The hook skips that stub, so it needs another
+   Python: Xcode's command-line tools (`xcode-select --install`) or Homebrew's.
+   **Ask the user** before installing anything if neither is found. Suggest
+   uv (`winget install astral-sh.uv` on Windows, `brew install uv` on macOS, or
+   the installer at https://docs.astral.sh/uv/). It is one tool, and it brings
+   its own Python. A plain Python works too:
+   `winget install Python.Python.3.12`, `brew install python`, or the system
+   package manager on Linux.
 4. Check `git --version`. The plugin is fetched from GitHub with Git.
 
 ## 2. Install the plugin
@@ -155,19 +164,31 @@ up only if the user asks for it. **Ask the user** first:
 
 Each step below records what to do for both server types.
 
+The server can run on the same machine as the agent, which is the simple case,
+or on another machine the agent's machine can reach. On the same machine, the
+address is `127.0.0.1` everywhere below.
+
 1. **Get the code.** On the server machine, run
    `git clone https://github.com/kolbasik/coding-agent-guard.git`, then `cd`
    into it.
 2. **Install and start the server.**
    - Apple silicon Mac: run
-     `sh skills/coding-agent-guard/scripts/setup-mac.sh --host <address clients reach>`,
-     adding the judge options the user chose. This installs uv, Ollaya with
-     laya:en, the Python environment and the classifier. It also adds two
-     LaunchAgents, so the server starts at login. It is safe to run again.
-   - Anything else: run `sh scripts/setup-server.sh`. Then start
-     `.venv/bin/python scripts/server.py --model models/horizon-guard-base --host <address> --port 8765`,
-     adding the judge option and `--claude-above 0.5` if a judge was chosen.
-     Keeping that process running is up to the user's service manager.
+     `sh skills/coding-agent-guard/scripts/setup-mac.sh`, adding the judge
+     options the user chose. On another machine than the agent's, also add
+     `--host <address clients reach>`; it listens on `127.0.0.1` by default.
+     This installs uv, Ollaya with laya:en, the Python environment and the
+     classifier. It also adds two LaunchAgents, so the server starts at login.
+     It is safe to run again.
+   - Windows: from Git Bash, run `sh scripts/setup-server.sh`. Then start
+     `.venv/Scripts/python.exe scripts/server.py --model models/horizon-guard-base --host 127.0.0.1 --port 8765`,
+     adding the judge options. With a judge, also add `--claude-above 0.5`.
+     The laya:en screen comes only with the Mac script.
+   - Linux: run `sh scripts/setup-server.sh`, then start the same command
+     with `.venv/bin/python`.
+
+   On Windows and Linux, the process stops when its terminal closes. **Ask the
+   user** whether to make it start at login (a Task Scheduler task on Windows,
+   a systemd user service on Linux). Then set that up as they choose.
 3. **Point the client at it.** In the client's settings (step 4), set
    `"classifier_url": "http://<address>:8765"` and `"classifier_timeout": 40`.
    Keep the timeout at 40 or less: the output hook is stopped after 60 s.

@@ -169,13 +169,16 @@ def build_server(args, models, confirmers=(), screens=()):
         def do_POST(self):
             if self.path != "/score":
                 return self._send(404, {"error": "not found"})
-            if not self._authorized():
-                return self._send(401, {"error": "bad token"})
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY:
                 return self._send(413, {"error": "body too large"})
+            # Read the body before any reply: a reply over an unread body makes Windows reset the
+            # connection, and the client sees a dropped connection instead of the 401.
+            raw = self.rfile.read(length)
+            if not self._authorized():
+                return self._send(401, {"error": "bad token"})
             try:
-                body = json.loads(self.rfile.read(length))
+                body = json.loads(raw)
                 text = body["text"]
             except (ValueError, KeyError, TypeError):
                 return self._send(400, {"error": 'expected {"text": "..."}'})

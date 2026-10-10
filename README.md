@@ -44,8 +44,9 @@ installing the plugin, testing that it blocks and redacts, optional settings
 and the optional scoring server. It asks you before it installs software or
 picks where suspect text may be sent. To do it by hand instead:
 
-Needs Python 3.8+ on `PATH` and `sh` (on Windows, the Git Bash Claude Code
-already uses).
+Needs [uv](https://docs.astral.sh/uv/) or Python 3.8+ on `PATH`, and `sh` (on
+Windows, the Git Bash Claude Code already uses). With uv, the hook runs through
+`uv run` and uv supplies the Python.
 
 Claude Code:
 
@@ -177,6 +178,10 @@ sh scripts/setup-server.sh
 .venv/bin/python scripts/server.py --model models/horizon-guard-base \
     --host <address the client reaches> --port 8765
 ```
+
+On Windows, run the setup from Git Bash and start `.venv/Scripts/python.exe`
+instead; the script prints the right command. On the same machine as the
+agent, use `127.0.0.1` for the address on both sides.
 
 Set `CODING_AGENT_GUARD_TOKEN` on both sides to require a bearer token.
 
