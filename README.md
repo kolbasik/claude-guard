@@ -33,6 +33,17 @@ secret of an unknown shape gets through.
 
 ## Install
 
+The easiest way is to let your coding agent do it. Paste this into Claude Code or Codex:
+
+```text
+Install coding-agent-guard by following https://raw.githubusercontent.com/kolbasik/coding-agent-guard/main/llms-install.md
+```
+
+[`llms-install.md`](llms-install.md) walks the agent through checking Python,
+installing the plugin, testing that it blocks and redacts, optional settings
+and the optional scoring server. It asks you before it installs software or
+picks where suspect text may be sent. To do it by hand instead:
+
 Needs Python 3.8+ on `PATH` and `sh` (on Windows, the Git Bash Claude Code
 already uses).
 
