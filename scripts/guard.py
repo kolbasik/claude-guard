@@ -248,7 +248,7 @@ def build_rules(cfg, known):
         classifier=SimpleNamespace(url=cfg["classifier_url"], threshold=cfg["classifier_threshold"],
                                    timeout=cfg["classifier_timeout"],
                                    token=os.environ.get(cfg["classifier_token_env"], ""), scores=None, error=None,
-                                   server_ms=None),
+                                   server_ms=None, agent="claude"),
         events=[],   # what the handlers found, for the log and the notification
         call={},     # what every call was: direction, outside or not, the text's fingerprint
         sample_text=None,   # the redacted outside text, kept only for samples_file, never logged
@@ -264,7 +264,7 @@ def model_hits(text, classifier):
     if classifier.token:
         headers["Authorization"] = f"Bearer {classifier.token}"
     req = urllib.request.Request(classifier.url.rstrip("/") + "/score",
-                                 json.dumps({"text": text[:200_000]}).encode(), headers)
+                                 json.dumps({"text": text[:200_000], "agent": classifier.agent}).encode(), headers)
     try:
         with urllib.request.urlopen(req, timeout=classifier.timeout) as r:
             reply = json.load(r)
@@ -278,9 +278,11 @@ def model_hits(text, classifier):
     # A screen's score only decided whether Claude looked; it never flags by itself.
     hits = [f"model:{name}" for name, p in scores.items()
             if isinstance(p, (int, float)) and p >= classifier.threshold and not name.startswith("screen:")]
-    # The Claude judge read the suspect text itself, so it may annotate a warning but never cancel one.
-    if hits and scores.get("claude") == 0.0:
-        hits.append("claude-judge:ordinary-data")
+    # The judge (Claude, or Codex for a Codex session) read the suspect text itself, so it may annotate
+    # a warning but never cancel one.
+    judge = "codex" if "codex" in scores else "claude"
+    if hits and scores.get(judge) == 0.0:
+        hits.append(f"{judge}-judge:ordinary-data")
     return hits
 
 
@@ -322,6 +324,7 @@ def on_output(event, rules):
     command = (event.get("tool_input") or {}).get("command", "")
     # Codex sends turn_id, and its PostToolUse cannot replace tool output: a secret there reaches the model.
     codex = "turn_id" in event
+    rules.classifier.agent = "codex" if codex else "claude"
     # Anything but a shell is web, MCP or API content, even from a tool whose input stays local.
     external = tool not in SHELLS or bool(rules.external.search(command))
     kinds, hits = [], []
@@ -526,10 +529,10 @@ def context(event):
 
 
 def confirmed(finding):
-    """Worth interrupting the user for: a blocked or exposed leak, or an injection the models flagged and Claude did not clear."""
+    """Worth interrupting the user for: a blocked or exposed leak, or an injection the models flagged and the judge did not clear."""
     hits = finding.get("injection") or []
     return bool(finding.get("blocked")) or bool(finding.get("exposed")) or (any(h.startswith("model:") for h in hits)
-                                            and "claude-judge:ordinary-data" not in hits)
+                                            and not any(h.endswith("-judge:ordinary-data") for h in hits))
 
 
 def headline(finding):
@@ -557,7 +560,8 @@ def finish(event, rules, cfg, result, hook_ms=None):
             record[key] = value
     for finding in rules.events:   # at most one per call
         record.update({k: v for k, v in finding.items() if v not in (None, [], "")})
-    record["claude_asked"] = bool(c.scores) and ("claude" in c.scores or "claude_error" in c.scores)
+    # Kept under its old name so earlier log lines still count; true for the Codex judge too.
+    record["claude_asked"] = bool(c.scores) and any(k in c.scores for k in ("claude", "claude_error", "codex", "codex_error"))
     record["confirmed"] = confirmed(record)
     record["notified"] = record["confirmed"] and cfg["notify"] == "desktop"
     if record["confirmed"]:

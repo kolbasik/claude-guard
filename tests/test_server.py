@@ -62,7 +62,8 @@ class Running:
     """A scoring server on a free local port for the length of a with-block."""
 
     def __init__(self, token="", judge_url=None, judge_above=0.0, confirmers=(), confirm_above=0.5,
-                 claude_cmd=None, claude_token_file=None, screens=(), screen_above=0.5, claude_above=0.9):
+                 claude_cmd=None, claude_token_file=None, screens=(), screen_above=0.5, claude_above=0.9,
+                 codex_cmd=None):
         self.model = FakeModel()
         self.cwd = tempfile.mkdtemp()
         args = SimpleNamespace(host="127.0.0.1", port=0, judge_url=judge_url, judge_model="fake-judge" if judge_url else None,
@@ -70,7 +71,9 @@ class Running:
                                claude_model="haiku" if claude_cmd else None, claude_cmd=claude_cmd, claude_above=claude_above,
                                screen_above=screen_above,
                                claude_timeout=30, claude_token_file=claude_token_file,
-                               claude_cwd=os.path.join(self.cwd, "judge-cwd"), claude_config=os.path.join(self.cwd, "judge-config"))
+                               claude_cwd=os.path.join(self.cwd, "judge-cwd"), claude_config=os.path.join(self.cwd, "judge-config"),
+                               codex_model="gpt-test" if codex_cmd else None, codex_cmd=codex_cmd, codex_timeout=30,
+                               codex_cwd=os.path.join(self.cwd, "codex-judge", "cwd"))
         with mock.patch.dict(os.environ, {"CODING_AGENT_GUARD_TOKEN": token}):
             self.server = server.build_server(args, [self.model], confirmers, screens)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -84,9 +87,9 @@ class Running:
         self.server.server_close()
 
 
-def post(url, text, token=None):
+def post(url, text, token=None, agent=None):
     headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})}
-    req = urllib.request.Request(url + "/score", json.dumps({"text": text}).encode(), headers)
+    req = urllib.request.Request(url + "/score", json.dumps({"text": text, "agent": agent}).encode(), headers)
     with urllib.request.urlopen(req, timeout=5) as r:
         return json.load(r)
 
@@ -259,6 +262,81 @@ class ClaudeJudgeTests(unittest.TestCase):
         result = server.top(scores)
         # Assert
         self.assertEqual(result, 0.3)
+
+
+FAKE_CODEX = r'''
+import json, os, sys
+text = sys.stdin.read()
+if os.environ.get("FAKE_CODEX_FAIL"):
+    sys.stderr.write("user\n" + text + "\nERROR: Not logged in\n"); sys.exit(1)
+args = sys.argv[1:]
+if args[0] != "exec" or "--ignore-user-config" not in args or args[-1] != "-" or os.listdir("."):
+    sys.exit(2)
+injection = "MARKER_HIGH" in text and "MARKER_ORDINARY" not in text
+print(json.dumps({"injection": injection}))
+'''
+
+
+def fake_codex():
+    path = os.path.join(tempfile.mkdtemp(), "fake_codex.py")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(FAKE_CODEX)
+    return [sys.executable, path]
+
+
+class CodexJudgeTests(unittest.TestCase):
+    def test_command_is_locked_down(self):
+        # Arrange
+        cli = ["codex"]
+        # Act
+        cmd = server.codex_command(cli, "gpt-test", "schema.json")
+        # Assert
+        joined = " ".join(f"[{a}]" for a in cmd)
+        self.assertTrue(all(flag in joined for flag in ("[--ephemeral]", "[--ignore-user-config]", "[--ignore-rules]",
+                                                        "[--disable] [hooks]", "[--disable] [plugins]",
+                                                        "[--sandbox] [read-only]", "[--output-schema] [schema.json]")))
+
+    def test_codex_session_gets_codex_verdict(self):
+        # Arrange
+        with Running(claude_cmd=fake_claude(), codex_cmd=fake_codex()) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="codex")
+        # Assert
+        self.assertEqual((reply["scores"].get("codex"), "claude" in reply["scores"]), (1.0, False))
+
+    def test_claude_session_still_gets_claude_verdict(self):
+        # Arrange
+        with Running(claude_cmd=fake_claude(), codex_cmd=fake_codex()) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="claude")
+        # Assert
+        self.assertEqual((reply["scores"].get("claude"), "codex" in reply["scores"]), (1.0, False))
+
+    def test_codex_session_without_codex_judge_falls_back_to_claude(self):
+        # Arrange
+        with Running(claude_cmd=fake_claude()) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="codex")
+        # Assert
+        self.assertEqual(reply["scores"].get("claude"), 1.0)
+
+    def test_codex_error_never_carries_the_text(self):
+        # Arrange
+        with Running(codex_cmd=fake_codex()) as s, mock.patch.dict(os.environ, {"FAKE_CODEX_FAIL": "1"}):
+            # Act
+            reply = post(s.url, "MARKER_HIGH secret page text", agent="codex")
+        # Assert
+        self.assertEqual(reply["scores"]["codex_error"], "RuntimeError: codex exit 1")
+
+    def test_disagreeing_codex_annotates_codex_session_note(self):
+        # Arrange
+        with Running(claude_cmd=fake_claude(), codex_cmd=fake_codex()) as s:
+            event = {**web_output("A long enough page body with MARKER_HIGH and MARKER_ORDINARY in it."), "turn_id": "t1"}
+            # Act
+            result = guard.on_output(event, guard_rules(s.url))
+        # Assert
+        note = result["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(("model:fake" in note, "codex-judge:ordinary-data" in note), (True, True))
 
 
 class FakeScreen:

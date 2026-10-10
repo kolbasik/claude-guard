@@ -31,12 +31,13 @@ def load(path, days):
 
 
 def scores_of(r):
-    """(classifier, screen, claude) scores of one call; None where that stage did not run."""
+    """(classifier, screen, judge) scores of one call, the judge being Claude or Codex; None where a stage did not run."""
     s = r.get("scores") or {}
     num = {k: v for k, v in s.items() if isinstance(v, (int, float))}
-    cls = max((v for k, v in num.items() if not k.startswith("screen:") and k not in ("claude", "judge")), default=None)
+    cls = max((v for k, v in num.items() if not k.startswith("screen:") and k not in ("claude", "codex", "judge")),
+              default=None)
     scr = max((v for k, v in num.items() if k.startswith("screen:")), default=None)
-    return cls, scr, num.get("claude")
+    return cls, scr, num.get("claude", num.get("codex"))
 
 
 def period(ts, by):

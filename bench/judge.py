@@ -1,4 +1,4 @@
-"""Measure a Claude judge on what the live cascade flags: does it keep real injections and clear false alarms?
+"""Measure a Claude or Codex judge on what the live cascade flags: does it keep real injections and clear false alarms?
 
   python judge.py [--positives 30] [--variant NAME ...]
   python judge.py --band sonnet-no-thinking      then: score.py --combine
@@ -40,6 +40,9 @@ VARIANTS = {
     "sonnet55-no-thinking": ("claude-sonnet-5-5", False, server.JUDGE_PROMPT),
     "haiku55-no-thinking": ("claude-haiku-5-5", False, server.JUDGE_PROMPT),
 }
+# Codex judges (`codex exec`, reasoning effort low), named by the model they run.
+CODEX_VARIANTS = {f"codex-{m}": m for m in ("gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna",
+                                             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")}
 
 
 def flagged_by_cascade(th=0.9, screen=0.5):
@@ -52,15 +55,20 @@ def flagged_by_cascade(th=0.9, screen=0.5):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--positives", type=int, default=30, help="flagged injections to judge; every flagged benign text is judged")
-    ap.add_argument("--variant", nargs="*", default=list(VARIANTS), choices=list(VARIANTS))
+    ap.add_argument("--variant", nargs="*", default=list(VARIANTS), choices=list(VARIANTS) + list(CODEX_VARIANTS))
     ap.add_argument("--benign-file", nargs="*", default=[".cache/bench/local-benign.jsonl"])
     ap.add_argument("--claude-bin", default="claude")
     ap.add_argument("--claude-token-file")
+    ap.add_argument("--codex-bin", default="codex")
+    ap.add_argument("--jobs", type=int, default=1, help="texts judged at once")
+    ap.add_argument("--public-only", action="store_true",
+                    help="never send --benign-file texts to the judge; they still align the saved scores")
+    ap.add_argument("--sample", type=int, help="with --band, judge only this many injections and this many benign texts")
     ap.add_argument("--datasets", nargs="+", default=["deepset", "safeguard"], choices=["deepset", "safeguard", "aib"])
     ap.add_argument("--scores", default="scores", help="folder under .cache/bench holding this sample set's score files")
     ap.add_argument("--also", nargs="*", default=[], metavar="MODEL:THRESHOLD",
                     help="with --band, also judge texts a saved model scores at or above THRESHOLD, e.g. ollaya-laya-en:0.5")
-    ap.add_argument("--band", metavar="VARIANT", choices=list(VARIANTS),
+    ap.add_argument("--band", metavar="VARIANT", choices=list(VARIANTS) + list(CODEX_VARIANTS),
                     help="judge only what Horizon-Labs is unsure of (0.5 to 0.9) with VARIANT, and save the verdicts "
                          "as a score file, so score.py --combine can compare Horizon-Labs -> Claude with other cascades")
     args = ap.parse_args()
@@ -68,16 +76,14 @@ def main():
     score.SCORES = os.path.join(score.CACHE, args.scores)
     loaders = {"deepset": score.deepset, "safeguard": score.safeguard, "aib": score.agentinjection}
     samples = [s for name in args.datasets for s in loaders[name]()]
+    public = len(samples)   # indexes from here on are the user's own texts
     for path in args.benign_file:
         with open(path, encoding="utf-8") as f:
             samples += [(r["text"], 0, r["source"]) for r in map(json.loads, f)]
     labels = [(l, s) for _, l, s in samples]
     if labels != [(r["label"], r["source"]) for r in score.load_scores("horizon-guard-base")]:
         sys.exit("saved scores come from different samples; rerun score.py with the default datasets and this --benign-file")
-    flagged = flagged_by_cascade()
-    pos = [i for i in flagged if samples[i][1] == 1][::max(1, len([i for i in flagged if samples[i][1] == 1]) // args.positives)][:args.positives]
-    neg = [i for i in flagged if samples[i][1] == 0]
-    print(f"cascade flags {len(flagged)} samples; judging {len(pos)} injections and all {len(neg)} benign texts", flush=True)
+    allowed = (lambda i: i < public) if args.public_only else (lambda i: True)
 
     if args.band:
         # Everything a cascade from Horizon-Labs could hand to Claude: what it scored 0.5 up to 0.9,
@@ -89,7 +95,11 @@ def main():
             # Texts Horizon-Labs flags on its own (0.9 or more) never need Claude to decide.
             band += [i for i, r in enumerate(score.load_scores(model_name)) if r["score"] is not None
                      and r["score"] >= float(threshold) and horizon[i] < 0.9 and i not in band]
-        name = "claude-" + args.band
+        band = [i for i in band if allowed(i)]
+        if args.sample:
+            spread = lambda xs: xs[::max(1, len(xs) // args.sample)][:args.sample]   # noqa: E731
+            band = spread([i for i in band if samples[i][1] == 1]) + spread([i for i in band if samples[i][1] == 0])
+        name = args.band if args.band in CODEX_VARIANTS else "claude-" + args.band
         path = os.path.join(score.SCORES, f"{name}.jsonl")
         # Verdicts from an earlier run are reused, so widening the band only judges what is new.
         earlier = {i: r["score"] >= 0.5 for i, r in enumerate(score.load_scores(name)) if r["score"] is not None} \
@@ -109,7 +119,7 @@ def main():
               f"injections and {sum(verdicts.get(i) is True for i in ben)}/{len(ben)} benign texts, "
               f"{errors} errors, p50 {statistics.median(times):.1f} s, max {max(times):.1f} s; saved for score.py --combine", flush=True)
         return
-    flagged = flagged_by_cascade()
+    flagged = [i for i in flagged_by_cascade() if allowed(i)]
     pos = [i for i in flagged if samples[i][1] == 1][::max(1, len([i for i in flagged if samples[i][1] == 1]) // args.positives)][:args.positives]
     neg = [i for i in flagged if samples[i][1] == 0]
     print(f"cascade flags {len(flagged)} samples; judging {len(pos)} injections and all {len(neg)} benign texts", flush=True)
@@ -123,9 +133,11 @@ def main():
 
 
 def judge_all(indexes, variant, samples, args):
-    """Claude's verdict (True = injection) on each index; errors are counted, not raised."""
-    model, thinking, prompt = VARIANTS[variant]
+    """The judge's verdict (True = injection) on each index; errors are counted, not raised."""
     cache = os.path.join(HERE, "..", ".cache")
+    if variant in CODEX_VARIANTS:
+        return codex_all(indexes, variant, samples, args, cache)
+    model, thinking, prompt = VARIANTS[variant]
     judge_args = SimpleNamespace(claude_cmd=[args.claude_bin], claude_model=model, claude_timeout=60,
                                  claude_token_file=args.claude_token_file,
                                  claude_cwd=os.path.join(cache, "judge-cwd"), claude_config=os.path.join(cache, "judge-config"))
@@ -145,6 +157,25 @@ def judge_all(indexes, variant, samples, args):
     finally:
         server.claude_command, server.JUDGE_PROMPT = command, saved_prompt
     return verdicts, times, errors
+
+
+def codex_all(indexes, variant, samples, args, cache):
+    """Codex's verdicts, --jobs at a time; each call gets its own empty working folder."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(i):
+        judge_args = SimpleNamespace(codex_cmd=[args.codex_bin], codex_model=CODEX_VARIANTS[variant], codex_timeout=120,
+                                     codex_cwd=os.path.join(cache, "codex-judge", f"cwd-{i}"))
+        t = time.perf_counter()
+        try:
+            return i, server.codex_judge(samples[i][0], judge_args), time.perf_counter() - t
+        except Exception:
+            return i, None, time.perf_counter() - t
+
+    with ThreadPoolExecutor(args.jobs) as pool:
+        results = list(pool.map(one, indexes))
+    verdicts = {i: v for i, v, _ in results if v is not None}
+    return verdicts, [t for _, _, t in results], sum(v is None for _, v, _ in results)
 
 if __name__ == "__main__":
     main()

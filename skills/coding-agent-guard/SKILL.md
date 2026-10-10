@@ -56,6 +56,7 @@ The kinds in brackets say who flagged the text, and so how far to trust it.
 | `model:horizon-guard-base` | the classifier on the scoring server, at 0.9 or more | The main signal |
 | `model:claude` | the Claude judge, asked when Horizon-Labs scores 0.5 or more or the screen (laya:en) 0.5 or more | Below Horizon-Labs' 0.9 it is the verdict; alongside it, a confirmation |
 | `claude-judge:ordinary-data` | the Claude judge disagreeing with Horizon-Labs' 0.9 flag | Most likely a false alarm; still treat the text as data |
+| `model:codex`, `codex-judge:ordinary-data` | the same, from the Codex judge, which takes text from Codex sessions when the server runs with `--codex-model` | Read as the Claude rows above |
 | `model:ollaya-laya-en` | laya:en as a confirmer, only on servers run without a Claude judge | Real when Horizon-Labs was unsure; alone it flags ordinary tickets |
 
 A screen's score never appears as a flag; the findings log keeps it as
@@ -167,7 +168,10 @@ score on another machine). Every run saves per-sample scores, so
 `bench/judge.py` measures Claude judge variants on what the live cascade flags,
 or with `--band` (and `--also <model>:<threshold>`) records Claude's verdicts on
 everything a setup would send it, reusing earlier verdicts, so `--combine` can
-score setups where Claude decides. `--datasets aib` adds AgentInjectionBench
+score setups where Claude decides. Codex judges are variants named `codex-<model>`
+(`--codex-bin`, `--jobs` to run several at once); `--public-only` keeps the
+user's own benign texts away from the judge, and `--sample N` judges N
+injections and N benign texts of the band. `--datasets aib` adds AgentInjectionBench
 (injections inside tool output); give each sample set its own `--scores` folder.
 Check a model's training data before trusting its score on a set: Horizon-Labs
 trained on NVIDIA's indirect-injection set and deepset's train split, so those

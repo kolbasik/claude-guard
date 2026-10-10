@@ -6,11 +6,14 @@
 # they stop. Safe to run again.
 #
 #   sh setup-mac.sh [--host 127.0.0.1] [--port 8765] [--claude-model claude-sonnet-5] [--claude-token-file PATH]
+#                   [--codex-model MODEL]
 #
 #   --host               address the server listens on; the one clients reach (a VM on this
 #                        Mac reaches the Parallels bridge, e.g. 10.211.55.2)
 #   --claude-model       also judge flagged text with a locked-down `claude -p`; a full model ID, since aliases move
 #   --claude-token-file  file holding a `claude setup-token` token, if the keychain is not usable
+#   --codex-model        judge text from Codex sessions with a locked-down `codex exec` instead; needs the
+#                        codex CLI on your login PATH, logged in
 #
 # Everything stays in this repo copy except the two LaunchAgents and Ollaya's model store.
 set -eu
@@ -20,14 +23,15 @@ OLLAYA_SHA256=7c7d79cae9256d79aa93111f28d2ad24f124c3d730c6786d27694fcef143a437  
 OLLAYA_MLX_SHA256=cba9a87db03b47bb58964af320e4a2c7ee6b8bc1521aec51f44f7db93ddda6da  # ollaya-darwin-arm64-mlx.tgz
 CONFIRM_MODEL=laya:en
 
-HOST=127.0.0.1 PORT=8765 CLAUDE_MODEL="" TOKEN_FILE=""
+HOST=127.0.0.1 PORT=8765 CLAUDE_MODEL="" TOKEN_FILE="" CODEX_MODEL=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --host) HOST=$2; shift 2 ;;
         --port) PORT=$2; shift 2 ;;
         --claude-model) CLAUDE_MODEL=$2; shift 2 ;;
         --claude-token-file) TOKEN_FILE=$2; shift 2 ;;
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        --codex-model) CODEX_MODEL=$2; shift 2 ;;
+        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
 done
@@ -141,6 +145,11 @@ if [ -n "$CLAUDE_MODEL" ]; then
 else
     # Without one: laya:en is the best second opinion on what Horizon-Labs is unsure of.
     set -- "$@" --confirm "$CONFIRM_MODEL" --confirm-above 0.5
+fi
+if [ -n "$CODEX_MODEL" ]; then
+    CODEX=$(zsh -lc 'command -v codex' 2>/dev/null | tail -1 || true)
+    [ -n "$CODEX" ] || { echo "--codex-model needs the codex CLI on your login PATH" >&2; exit 1; }
+    set -- "$@" --codex-model "$CODEX_MODEL" --codex-bin "$CODEX"
 fi
 agent dev.coding-agent-guard.server server "$@"
 
