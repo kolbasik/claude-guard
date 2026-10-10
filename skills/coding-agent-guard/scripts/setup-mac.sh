@@ -1,5 +1,5 @@
 #!/bin/sh
-# Set up the tool-guard scoring server on an Apple silicon Mac so it runs after every
+# Set up the coding-agent-guard scoring server on an Apple silicon Mac so it runs after every
 # login and restart: Ollaya (pinned and checksum-verified; an installed copy of the same
 # version is reused) with laya:en, the Python environment and the Horizon-Labs model,
 # and two LaunchAgents that start Ollaya and the server at login and restart them if
@@ -114,7 +114,7 @@ else
 fi
 
 step "login item for Ollaya"
-agent dev.tool-guard.ollaya ollaya "$OLLAYA" serve
+agent dev.coding-agent-guard.ollaya ollaya "$OLLAYA" serve
 if ! wait_port 127.0.0.1 11435 60; then
     echo "Ollaya is not listening on 127.0.0.1:11435; see $LOGS/ollaya.log" >&2
     echo "If another Ollaya (the desktop app, say) holds the port, quit it and run this again." >&2
@@ -142,7 +142,7 @@ else
     # Without one: laya:en is the best second opinion on what Horizon-Labs is unsure of.
     set -- "$@" --confirm "$CONFIRM_MODEL" --confirm-above 0.5
 fi
-agent dev.tool-guard.server server "$@"
+agent dev.coding-agent-guard.server server "$@"
 
 step "check"
 i=0
@@ -154,4 +154,4 @@ done
 echo
 echo "Done. Ollaya and the scoring server now start at login and restart if they stop."
 echo "Logs: $LOGS/ollaya.log and $LOGS/server.log"
-echo "Restart the server: launchctl kickstart -k $DOMAIN/dev.tool-guard.server"
+echo "Restart the server: launchctl kickstart -k $DOMAIN/dev.coding-agent-guard.server"

@@ -1,4 +1,4 @@
-"""Findings log and user notifications for tool-guard.
+"""Findings log and user notifications for coding-agent-guard.
 
 record() appends one JSON line per finding for later analysis: what was found,
 where it came from and the scores, never the text or a secret value.

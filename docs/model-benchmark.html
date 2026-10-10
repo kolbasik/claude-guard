@@ -1,4 +1,4 @@
-<title>tool-guard Model Benchmark</title>
+<title>coding-agent-guard Model Benchmark</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
@@ -104,7 +104,7 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
 
 <div class="wrap">
 <header>
-  <span class="eyebrow">tool-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02</span>
+  <span class="eyebrow">coding-agent-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02</span>
   <h1>Which model should read what comes from outside</h1>
   <p class="lede">The live setup scores every text from outside with Horizon-Labs' classifier and laya:en, and lets Claude Sonnet decide everything either finds suspect. It catches 83%, 94% and 79% of the injections in three held-out test sets, the last one hidden inside tool output, and wrongly flags 7 of our 240 own texts. A clean outside read costs about a quarter of a second; roughly 40% of them wait about 2 seconds more for Claude.</p>
   <p class="meta">Scoring server: Apple M5 Pro, 24 GB, on the Mac that hosts the Windows VM. Hook: Windows 11 ARM64 VM, 8 GB. Models run locally; only Claude, which already reads this session, sees text off the machine.</p>

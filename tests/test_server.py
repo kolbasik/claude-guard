@@ -71,7 +71,7 @@ class Running:
                                screen_above=screen_above,
                                claude_timeout=30, claude_token_file=claude_token_file,
                                claude_cwd=os.path.join(self.cwd, "judge-cwd"), claude_config=os.path.join(self.cwd, "judge-config"))
-        with mock.patch.dict(os.environ, {"TOOL_GUARD_TOKEN": token}):
+        with mock.patch.dict(os.environ, {"CODING_AGENT_GUARD_TOKEN": token}):
             self.server = server.build_server(args, [self.model], confirmers, screens)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
 
@@ -94,7 +94,7 @@ def post(url, text, token=None):
 def guard_rules(url, token=""):
     cfg = guard.default_config()
     cfg["classifier_url"] = url
-    with mock.patch.dict(os.environ, {"TOOL_GUARD_TOKEN": token}):
+    with mock.patch.dict(os.environ, {"CODING_AGENT_GUARD_TOKEN": token}):
         return guard.build_rules(cfg, [])
 
 
@@ -411,8 +411,8 @@ class GuardClientTests(unittest.TestCase):
         # Arrange
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            os.makedirs(os.path.join(tmp, ".claude", "tool-guard"))
-            with open(os.path.join(tmp, ".claude", "tool-guard", "settings.json"), "w") as f:
+            os.makedirs(os.path.join(tmp, ".claude", "coding-agent-guard"))
+            with open(os.path.join(tmp, ".claude", "coding-agent-guard", "settings.json"), "w") as f:
                 json.dump({"classifier_url": "http://10.0.0.1:8765", "classifier_threshold": 0.8}, f)
             with mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": tmp}):
                 # Act

@@ -1,7 +1,8 @@
-# tool-guard
+# coding-agent-guard
 
-A Claude Code plugin that checks what reaches Claude from outside and what
-Claude sends out.
+A plugin for Claude Code and Codex that checks what reaches the coding agent
+from outside and what the agent sends out. Codex gets all of it except output
+redaction (see [Codex](#codex)).
 
 | When | Checks | On a hit |
 |---|---|---|
@@ -35,14 +36,31 @@ secret of an unknown shape gets through.
 Needs Python 3.8+ on `PATH` and `sh` (on Windows, the Git Bash Claude Code
 already uses).
 
+Claude Code:
+
 ```sh
-claude plugin marketplace add <path or git URL of this repo>
-claude plugin install tool-guard@tool-guard
+claude plugin marketplace add kolbasik/coding-agent-guard
+claude plugin install coding-agent-guard@kolbasik
 ```
 
-To run it without installing, register `scripts/guard.py in` as a
-`PostToolUse` hook and `scripts/guard.py out` as a `PreToolUse` hook, with the
-matchers from `hooks/hooks.json`.
+Inside Claude Code the same is `/plugin marketplace add kolbasik/coding-agent-guard`
+then `/plugin install coding-agent-guard@kolbasik`. Restart Claude Code so the
+hooks load. Update with `claude plugin update coding-agent-guard@kolbasik`.
+
+Codex reads the same marketplace (tested with Codex 0.162.1):
+
+```sh
+codex plugin marketplace add kolbasik/coding-agent-guard
+codex plugin add coding-agent-guard@kolbasik
+```
+
+Codex runs a plugin's hooks only after you trust them, so start `codex` once
+and approve them. See [Codex](#codex) for what differs there.
+
+To run it without installing, clone it
+(`git clone https://github.com/kolbasik/coding-agent-guard.git`) and register
+`scripts/guard.py in` as a `PostToolUse` hook and `scripts/guard.py out` as a
+`PreToolUse` hook, with the matchers from `hooks/hooks.json`.
 
 **Speed.** The hook starts a Python process on every tool call, so the
 interpreter matters more than the code. On Windows ARM64 the `python` on `PATH`
@@ -61,9 +79,19 @@ uv venv --managed-python --python 3.12 .venv     # in this repo; set UV_PYTHON_I
 only about 4 ms, because Python already caches the bytecode of every imported
 module.
 
+## Codex
+
+Codex's `PostToolUse` hook cannot replace a tool's output, so under Codex a
+secret in command, web or MCP output reaches the model. The guard still finds
+it: the model gets a note not to repeat, store or send it, and you get a
+warning (and a desktop notification with `notify: "desktop"`). Everything else
+works as under Claude Code: secrets leaving the machine are blocked, and
+instruction-like text gets a note. Codex sets no `CLAUDE_PROJECT_DIR`, so the
+project settings are found from the session's working folder.
+
 ## Configure
 
-Optional. `~/.claude/tool-guard/settings.json` and `<project>/.claude/tool-guard/settings.json`
+Optional. `~/.claude/coding-agent-guard/settings.json` and `<project>/.claude/coding-agent-guard/settings.json`
 are read in that order, and every list extends the built-in one.
 
 | Key | Meaning |
@@ -80,7 +108,7 @@ are read in that order, and every list extends the built-in one.
 | `classifier_url` | Base URL of a scoring server (below); empty turns the model check off |
 | `classifier_threshold` | Score at or above which a model flags the output; default `0.9` |
 | `classifier_timeout` | Seconds to wait for the server before falling back to patterns; default `5` |
-| `classifier_token_env` | Environment variable holding the server's bearer token; default `TOOL_GUARD_TOKEN` |
+| `classifier_token_env` | Environment variable holding the server's bearer token; default `CODING_AGENT_GUARD_TOKEN` |
 | `log_file` | JSON Lines file with one line per checked call (relative paths resolve against the project); empty turns logging off |
 | `samples_file` | JSON Lines file keeping the redacted text of outputs flagged as injections, up to 50,000 characters each; empty (default) keeps none |
 | `notify` | `"desktop"` pops a notification for confirmed findings; `"none"` (default) only shows the line in Claude Code |
@@ -139,9 +167,9 @@ sh scripts/setup-server.sh
     --host <address the client reaches> --port 8765
 ```
 
-Set `TOOL_GUARD_TOKEN` on both sides to require a bearer token.
+Set `CODING_AGENT_GUARD_TOKEN` on both sides to require a bearer token.
 
-On an Apple silicon Mac, `sh skills/tool-guard/scripts/setup-mac.sh --host <address>`
+On an Apple silicon Mac, `sh skills/coding-agent-guard/scripts/setup-mac.sh --host <address>`
 does all of the above plus Ollaya (pinned `v0.7.5`, checksums verified; an installed
 copy of that version is reused) with `laya:en`, and installs two LaunchAgents so
 Ollaya and the server start at login and restart if they stop. Add
@@ -184,7 +212,7 @@ a notification. Claude's verdicts across these runs: every injection it was
 shown kept, 26 of 27 benign texts cleared.
 
 On the client, set `classifier_url` to `http://<that address>:8765` and put the
-same token in the `TOOL_GUARD_TOKEN` environment variable.
+same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
 
 - `fetch_model.py` downloads only ungated models, at a pinned revision, and
   checks every large file against the hub's SHA-256.
@@ -266,7 +294,7 @@ on another machine with `--benign-file`.
 ## Behaviour to know
 
 - **Fail-open.** A guard error lets the call through and prints
-  `tool-guard: internal error ... this call was not checked`.
+  `coding-agent-guard: internal error ... this call was not checked`.
 - **Notes on outgoing text arrive after the call.** Secrets, personal IDs and
   `"block": true` rules are the only things stopped beforehand.
 - **Rules see the text a person reads**: the command minus arguments that name

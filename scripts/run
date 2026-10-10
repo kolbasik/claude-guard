@@ -12,5 +12,5 @@ for py in python3 python; do
   case "$p" in *WindowsApps*) continue ;; esac
   exec "$p" "$here/guard.py" "$@"
 done
-echo "tool-guard: no Python 3 on PATH; this call was not checked" >&2
+echo "coding-agent-guard: no Python 3 on PATH; this call was not checked" >&2
 exit 1

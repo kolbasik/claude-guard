@@ -1,7 +1,10 @@
 {
-  "name": "tool-guard",
+  "name": "coding-agent-guard",
   "version": "0.1.0",
   "description": "Redacts secrets and personal IDs from tool output, flags prompt injection in content from outside, and blocks secrets from leaving the machine.",
   "author": { "name": "kolbasik" },
-  "keywords": ["security", "prompt-injection", "secrets", "hooks"]
+  "homepage": "https://github.com/kolbasik/coding-agent-guard",
+  "repository": "https://github.com/kolbasik/coding-agent-guard",
+  "license": "MIT",
+  "keywords": ["security", "prompt-injection", "secrets", "hooks", "claude-code", "codex"]
 }

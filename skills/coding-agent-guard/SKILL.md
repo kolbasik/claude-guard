@@ -1,10 +1,10 @@
 ---
-name: tool-guard
-description: What tool-guard's redactions, blocks, notes and notifications mean and what to do next, how its models were chosen, and how to analyse its findings log, re-run its benchmarks or set up and repair its scoring server. Use when tool output shows [REDACTED:<kind>], a call is denied with "tool-guard: blocked", a "tool-guard:" note flags instruction-like text or a rule on outgoing text, the user asks what tool-guard found or why, or model notes stop appearing.
+name: coding-agent-guard
+description: What coding-agent-guard's redactions, blocks, notes and notifications mean and what to do next, how its models were chosen, and how to analyse its findings log, re-run its benchmarks or set up and repair its scoring server. Use when tool output shows [REDACTED:<kind>], a call is denied with "coding-agent-guard: blocked", a "coding-agent-guard:" note flags instruction-like text or a rule on outgoing text, the user asks what coding-agent-guard found or why, or model notes stop appearing.
 user-invocable: false
 ---
 
-# tool-guard
+# coding-agent-guard
 
 A hook checks tool output on the way in and tool calls on the way out.
 
@@ -19,7 +19,14 @@ through the conversation.
 Redaction covers shell, web and MCP output, not the Read tool. When a redacted
 line has to be edited, Read the file for its exact bytes.
 
-## "tool-guard: blocked, this call would send ..."
+## "... secret value(s) ... that Codex could not hide from you"
+
+Under Codex the hook cannot replace tool output, so the secret is in your
+context. Treat it as exposed: never repeat it, write it to a file, put it in a
+command or send it anywhere. The user has been warned; if the task needs the
+value, a script reads it from its store instead.
+
+## "coding-agent-guard: blocked, this call would send ..."
 
 The call carried a secret or personal ID to somewhere off the machine: a
 command line, a file it uploads, a staged diff, a push, an MCP call. Remove the
@@ -27,7 +34,7 @@ value and reference it instead (`$TOKEN` from the environment, a secret-store
 lookup inside a script). If it is a false positive, tell the user and stop.
 Never split, encode or reword the value to get past the check.
 
-## "tool-guard: blocked, the text being sent ..."
+## "coding-agent-guard: blocked, the text being sent ..."
 
 Text a person will read broke a rule the user set to block. Rewrite the text
 so it no longer does what the message names, and send it again. Unlike a
@@ -99,13 +106,13 @@ A finding is *confirmed* when a secret or personal ID was blocked on its way
 out, or when a model flagged an injection and the Claude judge did not clear it.
 Confirmed findings show the user a warning line in Claude Code and, with
 `notify: "desktop"`, a desktop notification. `log_file` (JSON Lines; set in
-the project's `.claude/tool-guard/settings.json`) gets one line per call: every tool
+the project's `.claude/coding-agent-guard/settings.json`) gets one line per call: every tool
 output, every outgoing call, and anything with a finding, with its time,
 session, tool, program names, Jira keys, URL host, scores, `claude_asked`,
 `hook_ms` and whether it was confirmed and notified. The log never holds the
 text or a secret, only the text's length and a hash of its redacted form.
 
-For tuning, run `python code/tool-guard/scripts/stats.py --days 7 --by day`
+For tuning, run `python code/coding-agent-guard/scripts/stats.py --days 7 --by day`
 (or `--by week`): flow per period, the score distribution, and what-if tables
 for Claude's workload and the confirmed injections kept at other
 `--claude-above` / `--screen-above` values. Pass `--horizon` and `--screen` if
@@ -131,7 +138,7 @@ jq -c 'del(.text)' SAMPLES                                     # flagged samples
 
 A hook error naming `.venv` means the interpreter the hook points at is gone,
 usually after the venv was deleted or rebuilt. Every call then runs unchecked.
-Rebuild it in the tool-guard repo with `uv venv --managed-python --python 3.12
+Rebuild it in the coding-agent-guard repo with `uv venv --managed-python --python 3.12
 .venv`, with `UV_PYTHON_INSTALL_DIR` set to the repo's `.python` folder so the
 interpreter stays in the repo. Then reinstall the benchmark packages if they are
 needed (`setup-server.sh` lists them).
@@ -141,7 +148,7 @@ needed (`setup-server.sh` lists them).
 The hook falls back to pattern checks when the scoring server does not answer,
 and says so only on stderr and in the log (`classifier_error`). Check
 `<classifier_url>/health`. On a Mac set up with the script below, restart with
-`launchctl kickstart -k gui/$(id -u)/dev.tool-guard.server` or re-run the script;
+`launchctl kickstart -k gui/$(id -u)/dev.coding-agent-guard.server` or re-run the script;
 logs are in the repo copy's `.cache/server.log` and `.cache/ollaya.log`.
 `screen:ollaya-laya-en_error` (or `ollaya-laya-en_error`) in the scores means Ollaya is down. A `claude_error`
 saying "Not logged in" means the judge's token expired: the user reruns
@@ -177,13 +184,13 @@ channel allows an edit, and tell the user.
 `scripts/setup-mac.sh`, beside this file, does the whole server side on an Apple
 silicon Mac: uv, a pinned and checksum-verified Ollaya with `laya:en`, the Python
 environment and the Horizon-Labs model, and two LaunchAgents
-(`dev.tool-guard.ollaya`, `dev.tool-guard.server`) that start them at login and
+(`dev.coding-agent-guard.ollaya`, `dev.coding-agent-guard.server`) that start them at login and
 restart them if they stop. With `--claude-model` it runs laya:en as a screen and
 lets Claude decide from 0.5; without, laya:en confirms. It is safe to run again,
 and ends with a health check.
 
 ```sh
-sh skills/tool-guard/scripts/setup-mac.sh --host <address clients reach> \
+sh skills/coding-agent-guard/scripts/setup-mac.sh --host <address clients reach> \
     [--claude-model claude-sonnet-5 --claude-token-file <file with a claude setup-token token>]
 ```
 

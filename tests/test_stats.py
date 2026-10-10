@@ -64,9 +64,9 @@ class ProjectLogTests(unittest.TestCase):
     def test_log_is_found_from_a_directory_below_the_project(self):
         # Arrange
         with tempfile.TemporaryDirectory() as tmp:
-            os.makedirs(os.path.join(tmp, ".claude", "tool-guard"))
+            os.makedirs(os.path.join(tmp, ".claude", "coding-agent-guard"))
             os.makedirs(os.path.join(tmp, "code", "repo"))
-            with open(os.path.join(tmp, ".claude", "tool-guard", "settings.json"), "w", encoding="utf-8") as f:
+            with open(os.path.join(tmp, ".claude", "coding-agent-guard", "settings.json"), "w", encoding="utf-8") as f:
                 json.dump({"log_file": ".claude/events.jsonl"}, f)
             env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
             cwd = os.getcwd()

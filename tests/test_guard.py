@@ -62,6 +62,25 @@ class OnOutputTests(unittest.TestCase):
         self.assertEqual(result["hookSpecificOutput"]["updatedToolOutput"],
                          {"stdout": "token [REDACTED:github-token]", "stderr": "", "interrupted": False})
 
+    def test_codex_output_is_not_rewritten_but_flagged(self):
+        # Arrange
+        event = {**bash_output(f"token {GITHUB}"), "turn_id": "t1"}
+        # Act
+        result = guard.on_output(event, rules())
+        # Assert
+        self.assertEqual(("updatedToolOutput" in result["hookSpecificOutput"],
+                          "could not hide" in context(result), GITHUB in json.dumps(result)), (False, True, False))
+
+    def test_codex_secret_in_output_tells_the_user(self):
+        # Arrange
+        event = {**bash_output(f"token {GITHUB}"), "turn_id": "t1"}
+        r = rules()
+        handled = guard.on_output(event, r)
+        # Act
+        result = guard.finish(event, r, guard.default_config(), handled)
+        # Assert
+        self.assertIn("github-token reached the model", result["systemMessage"])
+
     def test_redaction_note_never_contains_the_value(self):
         # Arrange
         event = bash_output(f"token {GITHUB} and {KNOWN}")
@@ -379,8 +398,8 @@ class ConfigTests(unittest.TestCase):
     def test_project_config_extends_defaults(self):
         # Arrange
         with tempfile.TemporaryDirectory() as tmp:
-            os.makedirs(os.path.join(tmp, ".claude", "tool-guard"))
-            with open(os.path.join(tmp, ".claude", "tool-guard", "settings.json"), "w") as f:
+            os.makedirs(os.path.join(tmp, ".claude", "coding-agent-guard"))
+            with open(os.path.join(tmp, ".claude", "coding-agent-guard", "settings.json"), "w") as f:
                 json.dump({"external_commands": ["twg"]}, f)
             with mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": tmp}):
                 # Act
@@ -425,6 +444,21 @@ class HookProcessTests(unittest.TestCase):
                              capture_output=True, text=True, env=env)
         # Assert
         self.assertEqual(json.loads(run.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_project_config_found_from_event_cwd_without_project_env(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, ".claude", "coding-agent-guard"))
+            with open(os.path.join(tmp, ".claude", "coding-agent-guard", "settings.json"), "w") as f:
+                json.dump({"log_file": "events.jsonl"}, f)
+            event = json.dumps({**bash_output("all good"), "cwd": tmp, "turn_id": "t1"})
+            env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+            # Act
+            subprocess.run([sys.executable, os.path.join(SCRIPTS, "guard.py"), "in"], input=event,
+                           capture_output=True, text=True, env=env, cwd=tempfile.gettempdir())
+            logged = os.path.isfile(os.path.join(tmp, "events.jsonl"))
+        # Assert
+        self.assertTrue(logged)
 
     def test_local_output_does_not_load_the_http_client(self):
         # Arrange

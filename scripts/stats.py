@@ -1,8 +1,8 @@
-"""Statistics on the real flow through tool-guard, per day or week, to tune its thresholds.
+"""Statistics on the real flow through coding-agent-guard, per day or week, to tune its thresholds.
 
   python stats.py [--log PATH] [--days 7] [--by day|week] [--horizon 0.5] [--screen 0.5]
 
-Reads the hook's log_file (by default the one the project's .claude/tool-guard/settings.json names).
+Reads the hook's log_file (by default the one the project's .claude/coding-agent-guard/settings.json names).
 --horizon and --screen are the thresholds the server asks Claude at, for the what-if tables.
 Prints counts, rates, scores and timings only; the log holds no text.
 """
@@ -155,7 +155,7 @@ def project_log():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--log", help="log file; default: log_file from the project's .claude/tool-guard/settings.json")
+    ap.add_argument("--log", help="log file; default: log_file from the project's .claude/coding-agent-guard/settings.json")
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--by", choices=["day", "week"], default="day")
     ap.add_argument("--horizon", type=float, default=0.5, help="classifier score the server asks Claude at")
@@ -163,12 +163,12 @@ def main():
     args = ap.parse_args()
     path = args.log or project_log()
     if not path or not os.path.exists(path):
-        sys.exit(f"no log at {path!r}; set log_file in .claude/tool-guard/settings.json or pass --log")
+        sys.exit(f"no log at {path!r}; set log_file in .claude/coding-agent-guard/settings.json or pass --log")
     rows = list(load(path, args.days))
     if not rows:
         sys.exit(f"no entries in the last {args.days} days of {path}")
     outside = [r for _, r in rows if r.get("direction") == "in" and r.get("external")]
-    print(f"tool-guard flow, last {args.days} days, {len(rows)} log lines from {path}\n")
+    print(f"coding-agent-guard flow, last {args.days} days, {len(rows)} log lines from {path}\n")
     flow(rows, args.by)
     distribution(outside)
     what_if(outside, args.horizon, args.screen, args.days)

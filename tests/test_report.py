@@ -182,7 +182,7 @@ class NotifyTests(unittest.TestCase):
         runner = mock.Mock()
         # Act
         with mock.patch.object(subprocess, "run", runner):
-            report.notify("tool-guard", "it's flagged")
+            report.notify("coding-agent-guard", "it's flagged")
         # Assert
         argv = runner.call_args[0][0]
         script = base64.b64decode(argv[argv.index("-EncodedCommand") + 1]).decode("utf-16-le")

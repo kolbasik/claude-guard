@@ -8,7 +8,7 @@
   GET  /health                  ->  {"models": [...], "judge": "<model or null>"}
 
 Run it where the memory is (another machine on your network is fine) and point
-tool-guard's classifier_url at it. Set TOOL_GUARD_TOKEN to require a bearer token.
+coding-agent-guard's classifier_url at it. Set CODING_AGENT_GUARD_TOKEN to require a bearer token.
 The optional judge is any OpenAI-compatible chat endpoint (Ollama, LM Studio,
 llama.cpp); its verdict is reported as the score "judge", 1.0 for an injection.
 --claude-model asks a locked-down `claude -p` (no tools, settings, MCP servers or saved
@@ -102,7 +102,7 @@ def judge(url, model, text, timeout):
 
 def build_server(args, models, confirmers=(), screens=()):
     lock = threading.Lock()   # ponytail: one scoring at a time; per-model sessions if several users share it
-    token = os.environ.get("TOOL_GUARD_TOKEN", "")
+    token = os.environ.get("CODING_AGENT_GUARD_TOKEN", "")
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, payload):
@@ -220,7 +220,7 @@ def main():
         except Exception as e:
             print(f"{c.name} not reachable yet ({type(e).__name__}); its scores report an error until it is", flush=True)
     server = build_server(args, models, confirmers, screens)
-    print(f"tool-guard server on http://{args.host}:{args.port}: {[m.name for m in models]}"
+    print(f"coding-agent-guard server on http://{args.host}:{args.port}: {[m.name for m in models]}"
           f"{' + confirm ' + str([c.name for c in confirmers]) if confirmers else ''}"
           f"{' + screen ' + str([s.name for s in screens]) if screens else ''}"
           f"{' + claude ' + args.claude_model if args.claude_model else ''}"
