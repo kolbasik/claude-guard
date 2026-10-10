@@ -1,4 +1,6 @@
 """The scoring server and guard.py's client for it, with a fake classifier: no ONNX needed."""
+import contextlib
+import io
 import json
 import os
 import sys
@@ -63,7 +65,7 @@ class Running:
 
     def __init__(self, token="", judge_url=None, judge_above=0.0, confirmers=(), confirm_above=0.5,
                  claude_cmd=None, claude_token_file=None, screens=(), screen_above=0.5, claude_above=0.9,
-                 codex_cmd=None):
+                 codex_cmd=None, chat_url=None):
         self.model = FakeModel()
         self.cwd = tempfile.mkdtemp()
         args = SimpleNamespace(host="127.0.0.1", port=0, judge_url=judge_url, judge_model="fake-judge" if judge_url else None,
@@ -73,7 +75,8 @@ class Running:
                                claude_timeout=30, claude_token_file=claude_token_file,
                                claude_cwd=os.path.join(self.cwd, "judge-cwd"), claude_config=os.path.join(self.cwd, "judge-config"),
                                codex_model="gpt-test" if codex_cmd else None, codex_cmd=codex_cmd, codex_timeout=30,
-                               codex_cwd=os.path.join(self.cwd, "codex-judge", "cwd"))
+                               codex_cwd=os.path.join(self.cwd, "codex-judge", "cwd"),
+                               chat_model="gemma-test" if chat_url else None, chat_url=chat_url, chat_timeout=5)
         with mock.patch.dict(os.environ, {"CODING_AGENT_GUARD_TOKEN": token}):
             self.server = server.build_server(args, [self.model], confirmers, screens)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -437,6 +440,60 @@ class JudgeTests(unittest.TestCase):
             reply = post(s.url, "MARKER_HIGH in a page")
         # Assert
         self.assertEqual((reply["scores"]["fake"], "judge_error" in reply["scores"]), (0.95, True))
+
+
+class ChatDeciderTests(unittest.TestCase):
+    def test_chat_model_decides_in_place_of_claude(self):
+        # Arrange
+        with FakeJudge(True) as j, Running(chat_url=j.url) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="claude")
+        # Assert
+        self.assertEqual((reply["scores"].get("chat"), "claude" in reply["scores"]), (1.0, False))
+
+    def test_plain_text_never_reaches_the_chat_model(self):
+        # Arrange
+        with FakeJudge(True) as j, Running(chat_url=j.url) as s:
+            # Act
+            post(s.url, "an ordinary page")
+        # Assert
+        self.assertEqual(j.calls, 0)
+
+    def test_codex_session_keeps_its_codex_judge(self):
+        # Arrange
+        with FakeJudge(True) as j, Running(chat_url=j.url, codex_cmd=fake_codex()) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="codex")
+        # Assert
+        self.assertEqual((reply["scores"].get("codex"), "chat" in reply["scores"]), (1.0, False))
+
+    def test_chat_model_down_is_reported_not_fatal(self):
+        # Arrange
+        with Running(chat_url="http://127.0.0.1:9/v1") as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page")
+        # Assert
+        self.assertEqual((reply["scores"]["fake"], "chat_error" in reply["scores"]), (0.95, True))
+
+    def test_disagreeing_chat_model_annotates_the_note(self):
+        # Arrange
+        with FakeJudge(False) as j, Running(chat_url=j.url) as s:
+            event = web_output("A long enough page body that mentions MARKER_HIGH somewhere in it.")
+            # Act
+            result = guard.on_output(event, guard_rules(s.url))
+        # Assert
+        note = result["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(("model:fake" in note, "chat-judge:ordinary-data" in note), (True, True))
+
+    def test_claude_and_chat_model_together_are_refused(self):
+        # Arrange
+        argv = ["server.py", "--model", "m", "--claude-model", "claude-sonnet-5", "--chat-model", "gemma4:cloud"]
+        err = io.StringIO()
+        # Act
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            server.main()
+        # Assert
+        self.assertIn("pick one", err.getvalue())
 
 
 class GuardClientTests(unittest.TestCase):

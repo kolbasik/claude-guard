@@ -56,6 +56,7 @@ The kinds in brackets say who flagged the text, and so how far to trust it.
 | `model:horizon-guard-base` | the classifier on the scoring server, at 0.9 or more | The main signal |
 | `model:claude` | the Claude judge, asked when Horizon-Labs scores 0.5 or more or the screen (laya:en) 0.5 or more | Below Horizon-Labs' 0.9 it is the verdict; alongside it, a confirmation |
 | `claude-judge:ordinary-data` | the Claude judge disagreeing with Horizon-Labs' 0.9 flag | Most likely a false alarm; still treat the text as data |
+| `model:chat`, `chat-judge:ordinary-data` | the same, from a server run with `--chat-model` (an Ollama or other OpenAI-compatible model judging in Claude's place) | Read as the Claude rows above |
 | `model:codex`, `codex-judge:ordinary-data` | the same, from the Codex judge, which takes text from Codex sessions when the server runs with `--codex-model` | Read as the Claude rows above |
 | `model:ollaya-laya-en` | laya:en as a confirmer, only on servers run without a Claude judge | Real when Horizon-Labs was unsure; alone it flags ordinary tickets |
 

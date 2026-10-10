@@ -6,12 +6,14 @@
 # they stop. Safe to run again.
 #
 #   sh setup-mac.sh [--host 127.0.0.1] [--port 8765] [--claude-model claude-sonnet-5] [--claude-token-file PATH]
-#                   [--codex-model MODEL]
+#                   [--chat-model MODEL] [--codex-model MODEL]
 #
 #   --host               address the server listens on; the one clients reach (a VM on this
 #                        Mac reaches the Parallels bridge, e.g. 10.211.55.2)
 #   --claude-model       also judge flagged text with a locked-down `claude -p`; a full model ID, since aliases move
 #   --claude-token-file  file holding a `claude setup-token` token, if the keychain is not usable
+#   --chat-model         judge with this Ollama model instead of Claude, e.g. gemma4:cloud; needs Ollama
+#                        running on 127.0.0.1:11434 (and signed in, for a :cloud model)
 #   --codex-model        judge text from Codex sessions with a locked-down `codex exec` instead; needs the
 #                        codex CLI on your login PATH, logged in
 #
@@ -23,18 +25,22 @@ OLLAYA_SHA256=7c7d79cae9256d79aa93111f28d2ad24f124c3d730c6786d27694fcef143a437  
 OLLAYA_MLX_SHA256=cba9a87db03b47bb58964af320e4a2c7ee6b8bc1521aec51f44f7db93ddda6da  # ollaya-darwin-arm64-mlx.tgz
 CONFIRM_MODEL=laya:en
 
-HOST=127.0.0.1 PORT=8765 CLAUDE_MODEL="" TOKEN_FILE="" CODEX_MODEL=""
+HOST=127.0.0.1 PORT=8765 CLAUDE_MODEL="" TOKEN_FILE="" CODEX_MODEL="" CHAT_MODEL=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --host) HOST=$2; shift 2 ;;
         --port) PORT=$2; shift 2 ;;
         --claude-model) CLAUDE_MODEL=$2; shift 2 ;;
         --claude-token-file) TOKEN_FILE=$2; shift 2 ;;
+        --chat-model) CHAT_MODEL=$2; shift 2 ;;
         --codex-model) CODEX_MODEL=$2; shift 2 ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
 done
+if [ -n "$CLAUDE_MODEL" ] && [ -n "$CHAT_MODEL" ]; then
+    echo "--claude-model and --chat-model both judge the same text; pick one" >&2; exit 2
+fi
 
 [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] || { echo "needs an Apple silicon Mac" >&2; exit 1; }
 REPO=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -134,14 +140,18 @@ sh "$REPO/scripts/setup-server.sh"
 step "login item for the scoring server"
 set -- "$REPO/.venv/bin/python" -u "$REPO/scripts/server.py" --model "$REPO/models/horizon-guard-base" \
     --host "$HOST" --port "$PORT"
-if [ -n "$CLAUDE_MODEL" ]; then
-    # With a judge: laya:en screens every text and Claude decides everything either model finds
+if [ -n "$CLAUDE_MODEL" ] || [ -n "$CHAT_MODEL" ]; then
+    # With a judge: laya:en screens every text and the judge decides everything either model finds
     # suspect (Horizon-Labs 0.5 or more, or laya:en 0.5 or more), the most accurate setup measured.
-    CLAUDE=$(zsh -lc 'command -v claude' 2>/dev/null | tail -1 || true)
-    [ -n "$CLAUDE" ] || { echo "--claude-model needs the claude CLI on your login PATH" >&2; exit 1; }
-    set -- "$@" --screen "$CONFIRM_MODEL" --screen-above 0.5 \
-        --claude-model "$CLAUDE_MODEL" --claude-bin "$CLAUDE" --claude-above 0.5
-    if [ -n "$TOKEN_FILE" ]; then set -- "$@" --claude-token-file "$TOKEN_FILE"; fi
+    set -- "$@" --screen "$CONFIRM_MODEL" --screen-above 0.5 --claude-above 0.5
+    if [ -n "$CHAT_MODEL" ]; then
+        set -- "$@" --chat-model "$CHAT_MODEL"
+    else
+        CLAUDE=$(zsh -lc 'command -v claude' 2>/dev/null | tail -1 || true)
+        [ -n "$CLAUDE" ] || { echo "--claude-model needs the claude CLI on your login PATH" >&2; exit 1; }
+        set -- "$@" --claude-model "$CLAUDE_MODEL" --claude-bin "$CLAUDE"
+        if [ -n "$TOKEN_FILE" ]; then set -- "$@" --claude-token-file "$TOKEN_FILE"; fi
+    fi
 else
     # Without one: laya:en is the best second opinion on what Horizon-Labs is unsure of.
     set -- "$@" --confirm "$CONFIRM_MODEL" --confirm-above 0.5

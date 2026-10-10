@@ -2,7 +2,7 @@
 
   python server.py --model DIR [--model DIR ...] [--host 127.0.0.1] [--port 8765]
                    [--confirm OLLAYA_MODEL ...] [--claude-model claude-sonnet-5 --claude-bin PATH]
-                   [--codex-model MODEL --codex-bin PATH]
+                   [--codex-model MODEL --codex-bin PATH] [--chat-model MODEL --chat-url URL]
                    [--judge-url http://127.0.0.1:11434/v1 --judge-model NAME]
 
   POST /score  {"text": "...", "agent": "claude|codex"}  ->  {"scores": {"<model>": 0.97, ...}, "ms": 41}
@@ -15,7 +15,9 @@ llama.cpp); its verdict is reported as the score "judge", 1.0 for an injection.
 --claude-model asks a locked-down `claude -p` (no tools, settings, MCP servers or saved
 session) only about text a classifier already flags; its yes/no is the score "claude".
 --codex-model does the same with a locked-down `codex exec` for text from Codex sessions
-(score "codex"); without it, Codex sessions are judged by Claude too.
+(score "codex"); without it, Codex sessions are judged by Claude too. --chat-model takes
+Claude's place with any model behind an OpenAI-compatible endpoint, such as gemma4:cloud
+on Ollama (score "chat").
 """
 import argparse
 import hmac
@@ -123,6 +125,11 @@ def codex_judge(text, args):
     return bool(json.loads(reply[reply.find("{"):reply.rfind("}") + 1]).get("injection"))
 
 
+def chat_judge(text, args):
+    """True when the --chat-model judges the text an injection, through an OpenAI-compatible endpoint (Ollama)."""
+    return judge(args.chat_url, args.chat_model, text, args.chat_timeout) >= 0.5
+
+
 def judge(url, model, text, timeout):
     body = json.dumps({"model": model, "temperature": 0, "messages": [
         {"role": "system", "content": JUDGE_PROMPT},
@@ -157,7 +164,7 @@ def build_server(args, models, confirmers=(), screens=()):
                 return self._send(404, {"error": "not found"})
             self._send(200, {"models": [m.name for m in models], "confirm": [c.name for c in confirmers],
                              "screen": [s.name for s in screens], "claude": args.claude_model,
-                             "codex": args.codex_model, "judge": args.judge_model})
+                             "codex": args.codex_model, "chat": args.chat_model, "judge": args.judge_model})
 
         def do_POST(self):
             if self.path != "/score":
@@ -172,9 +179,12 @@ def build_server(args, models, confirmers=(), screens=()):
                 text = body["text"]
             except (ValueError, KeyError, TypeError):
                 return self._send(400, {"error": 'expected {"text": "..."}'})
-            # Text from a Codex session is judged by Codex when a Codex judge is set up, else by Claude.
-            judge_name = "codex" if body.get("agent") == "codex" and args.codex_model else "claude"
-            judge_fn = codex_judge if judge_name == "codex" else claude_judge
+            # Text from a Codex session is judged by Codex when a Codex judge is set up, everything else by
+            # the --chat-model when one is set, else by Claude.
+            judge_name = ("codex" if body.get("agent") == "codex" and args.codex_model
+                          else "chat" if args.chat_model else "claude")
+            judge_fn, judge_model = {"codex": (codex_judge, args.codex_model), "chat": (chat_judge, args.chat_model),
+                                     "claude": (claude_judge, args.claude_model)}[judge_name]
             started = time.perf_counter()
             with lock:
                 scores = {m.name: round(m.score(text), 4) for m in models}
@@ -194,7 +204,7 @@ def build_server(args, models, confirmers=(), screens=()):
                 except Exception as e:
                     scores[f"{SCREEN}{s.name}_error"] = type(e).__name__
             # The judge takes seconds, so it only weighs in once a classifier or a screen finds the text suspect.
-            if (args.codex_model if judge_name == "codex" else args.claude_model) and (
+            if judge_model and (
                     top(scores) >= args.claude_above or (screens and top(scores, screens=True) >= args.screen_above)):
                 try:
                     scores[judge_name] = 1.0 if judge_fn(text, args) else 0.0
@@ -238,6 +248,11 @@ def main():
                                           "e.g. gpt-6.1-sol; other text still goes to Claude")
     ap.add_argument("--codex-bin", default="codex", help="path to the codex CLI")
     ap.add_argument("--codex-timeout", type=float, default=60)
+    ap.add_argument("--chat-model", help="decide with this model through an OpenAI-compatible endpoint instead of "
+                                         "Claude, e.g. gemma4:cloud on Ollama; Codex sessions keep a --codex-model")
+    ap.add_argument("--chat-url", default="http://127.0.0.1:11434/v1", help="the --chat-model's endpoint; "
+                                                                             "default the local Ollama")
+    ap.add_argument("--chat-timeout", type=float, default=30)
     ap.add_argument("--judge-url", help="OpenAI-compatible base URL, e.g. http://127.0.0.1:11434/v1")
     ap.add_argument("--judge-model")
     ap.add_argument("--judge-timeout", type=float, default=20)
@@ -246,8 +261,10 @@ def main():
     args = ap.parse_args()
     if bool(args.judge_url) != bool(args.judge_model):
         ap.error("--judge-url and --judge-model go together")
-    if args.screen and not (args.claude_model or args.codex_model):
-        ap.error("--screen only sends text to a judge, so it needs --claude-model or --codex-model")
+    if args.claude_model and args.chat_model:
+        ap.error("--claude-model and --chat-model both decide the same text; pick one")
+    if args.screen and not (args.claude_model or args.codex_model or args.chat_model):
+        ap.error("--screen only sends text to a judge, so it needs --claude-model, --chat-model or --codex-model")
     args.claude_cmd, args.codex_cmd = [args.claude_bin], [args.codex_bin]
     cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".cache")
     args.claude_cwd = os.path.join(cache, "judge-cwd")
@@ -270,6 +287,7 @@ def main():
           f"{' + screen ' + str([s.name for s in screens]) if screens else ''}"
           f"{' + claude ' + args.claude_model if args.claude_model else ''}"
           f"{' + codex ' + args.codex_model if args.codex_model else ''}"
+          f"{' + chat ' + args.chat_model if args.chat_model else ''}"
           f"{' + judge ' + args.judge_model if args.judge_url else ''}", flush=True)
     server.serve_forever()
 

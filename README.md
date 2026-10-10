@@ -173,9 +173,10 @@ On an Apple silicon Mac, `sh skills/coding-agent-guard/scripts/setup-mac.sh --ho
 does all of the above plus Ollaya (pinned `v0.7.5`, checksums verified; an installed
 copy of that version is reused) with `laya:en`, and installs two LaunchAgents so
 Ollaya and the server start at login and restart if they stop. Add
-`--claude-model claude-sonnet-5 --claude-token-file <file>` for the Claude judge, and
-`--codex-model gpt-6.1-sol` (with the `codex` CLI installed and logged in there) to judge
-text from Codex sessions with Codex. It is safe to run again.
+`--claude-model claude-sonnet-5 --claude-token-file <file>` for the Claude judge, or
+`--chat-model gemma4:cloud` (with Ollama running there) to judge with an Ollama model
+instead, and `--codex-model gpt-6.1-sol` (with the `codex` CLI installed and logged in
+there) to judge text from Codex sessions with Codex. It is safe to run again.
 
 ### Which model
 
@@ -318,6 +319,13 @@ same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
   `gemma4:cloud` matched Sonnet 5 on these texts at about half the time. A
   `:cloud` model sends the text to Ollama's cloud, so our own tickets and notes
   were not part of this run.
+- `--chat-model gemma4:cloud` makes such a model the judge in Claude's place:
+  it decides the same suspect text, reported as the score `chat`, and its
+  verdict annotates or confirms a flag exactly as Claude's does. It talks to
+  `--chat-url`, by default the local Ollama (`http://127.0.0.1:11434/v1`), and
+  every text it judges goes wherever that endpoint sends it; for a `:cloud`
+  model that is Ollama's cloud. Codex sessions keep a `--codex-model` judge if
+  one is set. `--claude-model` and `--chat-model` are one or the other.
 - Models are not bundled. Check a model's licence before sharing it; Prompt
   Guard 2, for one, is under the Llama 4 Community License.
 

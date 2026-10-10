@@ -287,7 +287,7 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
       <tr><td>gpt-6-luna</td><td class="n bad">16 / 24</td><td class="n">4 / 24</td><td class="n">3.2 s</td></tr>
     </tbody>
   </table></div>
-  <p class="note">The Codex judge runs as <code>codex exec</code> with no user config, rules, hooks, plugins or saved session, in a read-only sandbox; Codex has no switch to turn its shell tool off. It takes text from Codex sessions only, and draws on the same ChatGPT usage limit as those sessions. An Ollama model can join the live server only as a further opinion (<code>--judge-url</code>), which can add a flag but not clear one, and a <code>:cloud</code> model sends the text to Ollama's cloud. On the same 48-text sample, gemma4:cloud caught 23 with 7 false alarms.</p>
+  <p class="note">The Codex judge runs as <code>codex exec</code> with no user config, rules, hooks, plugins or saved session, in a read-only sandbox; Codex has no switch to turn its shell tool off. It takes text from Codex sessions only, and draws on the same ChatGPT usage limit as those sessions. Since 0.1.2 an Ollama model can take Claude's place as the judge (<code>--chat-model gemma4:cloud</code>), deciding the grey band and clearing false alarms as Claude does; a <code>:cloud</code> model then sends every text it judges to Ollama's cloud. On the same 48-text sample, gemma4:cloud caught 23 with 7 false alarms.</p>
 </section>
 
 <section>
