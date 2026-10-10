@@ -1,0 +1,12 @@
+{
+  "name": "tool-guard",
+  "description": "tool-guard: secret redaction and prompt-injection checks for Claude Code tool calls",
+  "owner": { "name": "kolbasik" },
+  "plugins": [
+    {
+      "name": "tool-guard",
+      "source": "./",
+      "description": "Redacts secrets from tool output, flags prompt injection, blocks secrets from leaving the machine."
+    }
+  ]
+}

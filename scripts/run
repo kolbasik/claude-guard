@@ -1,0 +1,16 @@
+#!/bin/sh
+# Start guard.py with a real Python 3. A venv next to the scripts wins: `uv venv`
+# builds it on the machine's native interpreter, which on Windows ARM64 starts
+# twice as fast as the emulated x64 Python PATH often holds. Otherwise PATH;
+# on Windows `python3` can be the Microsoft Store stub in WindowsApps, which runs nothing.
+here=$(dirname "$0")
+for p in "$here/../.venv/Scripts/python.exe" "$here/../.venv/bin/python"; do
+  [ -x "$p" ] && exec "$p" "$here/guard.py" "$@"
+done
+for py in python3 python; do
+  p=$(command -v "$py" 2>/dev/null) || continue
+  case "$p" in *WindowsApps*) continue ;; esac
+  exec "$p" "$here/guard.py" "$@"
+done
+echo "tool-guard: no Python 3 on PATH; this call was not checked" >&2
+exit 1

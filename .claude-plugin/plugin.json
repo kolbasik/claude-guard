@@ -1,0 +1,7 @@
+{
+  "name": "tool-guard",
+  "version": "0.1.0",
+  "description": "Redacts secrets and personal IDs from tool output, flags prompt injection in content from outside, and blocks secrets from leaving the machine.",
+  "author": { "name": "kolbasik" },
+  "keywords": ["security", "prompt-injection", "secrets", "hooks"]
+}

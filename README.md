@@ -1,0 +1,290 @@
+# tool-guard
+
+A Claude Code plugin that checks what reaches Claude from outside and what
+Claude sends out.
+
+| When | Checks | On a hit |
+|---|---|---|
+| After a shell, web or MCP tool runs | Secrets and personal IDs | Redacted before Claude sees the output; the transcript keeps the redacted copy only |
+| | Invisible Unicode (zero-width, bidi, tag characters) | Removed |
+| | Instruction-like text in output from outside | A note tells Claude it is data |
+| Before a call that leaves the machine | Secrets and personal IDs in the call, the files it uploads, the staged diff of a commit, the commits of a push | Blocked, with the kind named and the value never repeated |
+| | Instruction-like text and your warn rules in text a person will read | A note, or a block for a rule with `"block": true` |
+
+It never checks your own prompts.
+
+## What it detects
+
+- **Secret shapes:** AWS, GitHub, GitLab, Atlassian, Slack, Anthropic, Google,
+  Stripe, npm and Jenkins tokens, JWTs, private keys, Azure account keys,
+  bearer headers, passwords in URLs, connection strings, YAML and JSON.
+  Placeholders such as `${DB_PASSWORD}` or `<password>` are left alone.
+- **Known values:** any environment variable whose name contains token, secret,
+  password, api key, private key or credential, plus Windows Credential Manager
+  entries you list. These match exactly, whatever their shape.
+- **Personal IDs:** Finnish henkilötunnus, check character verified.
+- **Injection:** "ignore previous instructions" and variants, fake role tags
+  and lines, "don't tell the user", requests to send credentials somewhere,
+  hidden tag characters.
+
+Pattern lists are defence in depth, not a guarantee. A reworded injection or a
+secret of an unknown shape gets through.
+
+## Install
+
+Needs Python 3.8+ on `PATH` and `sh` (on Windows, the Git Bash Claude Code
+already uses).
+
+```sh
+claude plugin marketplace add <path or git URL of this repo>
+claude plugin install tool-guard@tool-guard
+```
+
+To run it without installing, register `scripts/guard.py in` as a
+`PostToolUse` hook and `scripts/guard.py out` as a `PreToolUse` hook, with the
+matchers from `hooks/hooks.json`.
+
+**Speed.** The hook starts a Python process on every tool call, so the
+interpreter matters more than the code. On Windows ARM64 the `python` on `PATH`
+is often the x64 build running under emulation. Measured per local call on one
+machine (2026-09-29): 130–146 ms with it, 61 ms with a venv on the native
+build. Let uv pick the native build and make the venv next to the scripts:
+
+```sh
+uv venv --managed-python --python 3.12 .venv     # in this repo; set UV_PYTHON_INSTALL_DIR to keep the interpreter here too
+```
+
+`scripts/run` uses `.venv` when it exists. For a hook registered by hand, name
+`.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` as the exec-form
+`command`, with `guard.py` in `args`. Asking uv on every call instead
+(`uv run --no-project`) adds about 25 ms per call; a precompiled entry saves
+only about 4 ms, because Python already caches the bytecode of every imported
+module.
+
+## Configure
+
+Optional. `~/.claude/tool-guard/settings.json` and `<project>/.claude/tool-guard/settings.json`
+are read in that order, and every list extends the built-in one.
+
+| Key | Meaning |
+|---|---|
+| `external_commands` | Regexes for shell commands whose output comes from outside, added to curl, wget, gh, aws, ssh and similar |
+| `outbound_commands` | Regexes for shell commands that send data off the machine, added to curl, gh, git commit/push, scp and similar |
+| `text_commands` | Outbound commands whose text a person reads; warn rules apply to them |
+| `text_tools` | The same for non-shell tools, by tool-name regex |
+| `local_tools` | Tool-name regexes whose input stays on this machine, so secret shapes in it are not blocked |
+| `secret_patterns` | Extra `{"name", "pattern"}` secret shapes; a group named `v` marks the secret part |
+| `secret_env` | Extra environment variable names whose values are secrets |
+| `credential_manager_filters` | Windows Credential Manager target filters whose values are secrets, e.g. `"myapp/*"` |
+| `warn` | `{"name", "pattern", "message"?, "commands"?, "block"?}` rules for outgoing text; `commands` limits a rule to matching commands, `"block": true` denies the call instead of adding a note |
+| `classifier_url` | Base URL of a scoring server (below); empty turns the model check off |
+| `classifier_threshold` | Score at or above which a model flags the output; default `0.9` |
+| `classifier_timeout` | Seconds to wait for the server before falling back to patterns; default `5` |
+| `classifier_token_env` | Environment variable holding the server's bearer token; default `TOOL_GUARD_TOKEN` |
+| `log_file` | JSON Lines file with one line per checked call (relative paths resolve against the project); empty turns logging off |
+| `samples_file` | JSON Lines file keeping the redacted text of outputs flagged as injections, up to 50,000 characters each; empty (default) keeps none |
+| `notify` | `"desktop"` pops a notification for confirmed findings; `"none"` (default) only shows the line in Claude Code |
+
+The four `classifier_*` keys, `log_file`, `samples_file` and `notify` replace the default rather than extending it.
+
+**Notifications and the log.** A *confirmed* finding is a blocked secret or
+personal ID, or an injection a model flagged and the Claude judge did not clear.
+It shows a warning line to the user in Claude Code (`systemMessage`) and, with
+`notify: "desktop"`, a Windows toast, macOS notification or `notify-send`.
+`log_file` gets one line per call: every tool output, every outgoing call, and
+anything with a finding (redactions, pattern hits, cleared flags, blocks,
+warnings, an unreachable server), with its time, session, tool, program names,
+Jira keys, URL host, scores, whether Claude was asked, and how long the hook
+took. The text is kept only as its length and a hash of its redacted form; no
+text and no secret is written.
+
+**Flagged texts.** With `samples_file` set, the redacted text of every output a
+model or pattern flagged as an injection is kept there, linked to its log line
+by `sha256`, so false alarms and real attacks can be studied later. Unflagged
+text is never kept. The file holds real attacks and whatever the flagged source
+contained, so keep it out of version control and do not open it in Claude Code:
+the Read tool is not checked by the hook.
+
+**Stats.** `python scripts/stats.py [--days 7] [--by day|week]` reads the log
+and prints, per day or week, how many calls came in and from outside, how many
+went to Claude, were flagged, confirmed or blocked, and the hook's latency; how
+outside texts spread over the score range; and a what-if table showing how many
+texts Claude would see, and how many of its confirmed injections would be kept,
+at other classifier and screen thresholds. It prints numbers only.
+
+```json
+{
+  "external_commands": ["jira-cli"],
+  "outbound_commands": ["jira-cli"],
+  "text_commands": ["jira-cli"],
+  "credential_manager_filters": ["myapp/*"],
+  "warn": [{ "name": "internal-host", "pattern": "\\.corp\\.internal\\b", "message": "names an internal host" }]
+}
+```
+
+## Optional: a model-based check
+
+Patterns miss reworded injections. A small classifier catches more, but
+loading one costs seconds, so it runs as a long-lived server, on your machine
+or on another one with more memory. Output from outside is sent to it
+already redacted, and a score over the threshold adds to Claude's note. If the
+server is down, the hook falls back to patterns and the call goes through.
+
+On the server machine, from a copy of this repo (needs [uv](https://docs.astral.sh/uv/);
+everything stays inside the repo folder):
+
+```sh
+sh scripts/setup-server.sh
+.venv/bin/python scripts/server.py --model models/horizon-guard-base \
+    --host <address the client reaches> --port 8765
+```
+
+Set `TOOL_GUARD_TOKEN` on both sides to require a bearer token.
+
+On an Apple silicon Mac, `sh skills/tool-guard/scripts/setup-mac.sh --host <address>`
+does all of the above plus Ollaya (pinned `v0.7.5`, checksums verified; an installed
+copy of that version is reused) with `laya:en`, and installs two LaunchAgents so
+Ollaya and the server start at login and restart if they stop. Add
+`--claude-model claude-sonnet-5 --claude-token-file <file>` for the Claude judge. It is safe to
+run again.
+
+### Which model
+
+Measured with `bench/score.py` on 2026-09-29, on held-out test splits only:
+
+| Model | deepset caught | xTRam1 caught | False alarms, published benign | False alarms, our tickets and notes |
+|---|---|---|---|---|
+| Horizon-Labs prompt-injection-guard-base, 0.5 | 65% | 80.5% | 0.7% | 3–10% |
+| same, 0.9 | 38% | 56% | 0.4% | 3.3% |
+| Prompt Guard 2 86M, full precision, 0.5 | 17% | 46% | 0.2% | 0–2% |
+
+Horizon-Labs (Apache-2.0, ungated) is the default. Its training data includes
+`deepset` train and all of NVIDIA's indirect-injection set, so scores on those
+sets mean nothing for it; the table uses what it did not see. It was six days
+old when measured and its publisher's own benchmarks are unaudited. At 0.5 its
+false alarms on real tickets are too noisy on their own, which is what the judge
+below is for.
+
+How the pieces combine, on the same held-out sets plus
+[AgentInjectionBench](https://huggingface.co/datasets/ppradyoth/AgentInjectionBench)
+(142 injections inside tool output, 40 attack-adjacent benign controls; not in
+Horizon-Labs' training data), measured 2026-09-29:
+
+| Setup | Caught: deepset / xTRam1 / AgentInjectionBench | False alarms, our texts | Our texts sent to Claude |
+|---|---|---|---|
+| Horizon-Labs alone, 0.9 | 38% / 56% / 65% | 2.5% | – |
+| Horizon-Labs → `--confirm laya:en` | 48% / 75.5% / 67% | 3.3% | 3% (to annotate) |
+| Horizon-Labs 0.5 or more → Claude | 65% / 80.5% / 70% | 2.5% | 5% |
+| **Horizon-Labs 0.5 or `--screen laya:en` 0.5 or more → Claude** | **83% / 94% / 79%** | 2.9% | 40% |
+
+The last row is what `setup-mac.sh` installs when a Claude judge is given. On
+AgentInjectionBench every setup raised the same 6 false alarms of 40, all from
+Horizon-Labs at 0.9 or more; Claude cleared 5 of them, so 1 reached the user as
+a notification. Claude's verdicts across these runs: every injection it was
+shown kept, 26 of 27 benign texts cleared.
+
+On the client, set `classifier_url` to `http://<that address>:8765` and put the
+same token in the `TOOL_GUARD_TOKEN` environment variable.
+
+- `fetch_model.py` downloads only ungated models, at a pinned revision, and
+  checks every large file against the hub's SHA-256.
+- Any ONNX sequence classifier with `tokenizer.json` and an `id2label` config
+  works; repeat `--model` to run several side by side.
+- `--confirm <model>` asks a decision model served by [Ollaya](https://ollaya.dev)
+  for a second opinion, only when a classifier scores at least `--confirm-above`
+  (default 0.5). With the client's threshold at 0.9 this is a cascade: the
+  classifier flags alone when sure, and the second model can flag what it was
+  unsure of. Measured on 2026-09-29, Horizon-Labs confirmed by `laya:en` caught
+  48% / 75.5% (deepset / xTRam1) against 38% / 56% for Horizon-Labs alone at 0.9,
+  with the same false-alarm rate on real tickets (3.3%). `laya:en` on its own
+  flagged 20–45% of ordinary tickets and notes, so use it only as a confirmer.
+  Other confirmers, same test: `winnow:e4b` 41.7% / 67.2% (363 ms per call on an
+  M5 Pro GPU), `decider:4b` 38.3% / 60.2% (2.9 s, CPU), `qwen3guard`, `kev`,
+  `jevk5` and `nli` 55.6–58.1% on xTRam1, no better than Horizon-Labs alone.
+  `laya:en` or `winnow:e4b` together reach 50.0% / 78.4%. These rates rest on
+  60 benign texts per source, and a confirmer's false alarms on the 8 benign
+  texts Horizon-Labs was unsure of, so read small differences as noise.
+- `--screen <model>` scores every text with a decision model served by Ollaya
+  that never flags on its own: at `--screen-above` (default 0.5) it sends the
+  text to the Claude judge, and only Claude's verdict can flag it. laya:en
+  screens well because it catches attacks Horizon-Labs misses and Claude throws
+  out its many false alarms. It needs `--claude-model`, adds about 70 ms to every
+  text, and sends roughly 40% of ordinary tickets and notes to Claude.
+- `--claude-model claude-sonnet-5` asks a locked-down `claude -p` about text a classifier
+  flags or is unsure of (`--claude-above`, default 0.9; 0.5 lets Claude decide
+  Horizon-Labs' unsure band) or that a screen sends: no thinking, tools, settings
+  sources, MCP servers, skills or saved session, its own empty config folder and
+  working folder, telemetry and update checks off, $0.05 cap. Its verdict is
+  added to the note (`model:claude`, or `claude-judge:ordinary-data`) and never
+  removes a classifier's 0.9 warning, because the judge read the suspect text;
+  below 0.9 its verdict decides. Over ssh the macOS
+  keychain is locked, so log it in with `claude setup-token` and
+  `--claude-token-file`; `--bare` and `CLAUDE_CODE_SIMPLE` refuse subscription
+  logins. Measured 2026-09-29 on 30 flagged injections and 10 flagged benign
+  texts: Sonnet without thinking kept 30/30 and cleared 10/10 in 1.9 s (p50);
+  Haiku with thinking 28/30 in 5.1 s (up to 25 s); Haiku without thinking 23/30.
+  Measured 2026-10-07, thinking off, on the 428 texts a `bench/judge.py --band`
+  run sent Claude (280 injections from deepset and xTRam1; 148 benign, 92 of
+  them our own tickets and notes):
+
+  | Judge | Injections missed | False alarms | p50 | Slowest |
+  |---|---|---|---|---|
+  | `claude-sonnet-5` | 6 | 15 | 1.7 s | 4.6 s |
+  | `claude-sonnet-5-5` | 21 | 10 | 2.0 s | 14.4 s |
+  | `claude-haiku-5-5` | 47 | 8 | 1.6 s | 5.3 s |
+
+  Give a full model ID. `sonnet` and `haiku` are CLI aliases that move when the
+  CLI updates: with CLI 2.1.292, `sonnet` means Sonnet 5.5 and `haiku` still
+  means Haiku 4.5. When the pinned model is retired, the judge fails and its
+  scores show `claude_error`.
+- `--judge-url` / `--judge-model` add an open-weight LLM as a further opinion,
+  through any OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp).
+  `--judge-above 0.5` asks it only when a classifier already scores 0.5 or more,
+  so it costs its seconds only on suspect text. `openai/gpt-oss-safeguard-20b`
+  (Apache-2.0, ungated, about 14 GB) is built for classifying against a written
+  policy; `ibm-granite/granite-guardian-3.3-8b` also takes custom criteria.
+- Models are not bundled. Check a model's licence before sharing it; Prompt
+  Guard 2, for one, is under the Llama 4 Community License.
+
+`bench/score.py` compares models on two published datasets
+(`deepset/prompt-injections` for direct injections, NVIDIA's
+`Nemotron-RL-Agentic-Indirect-Prompt-Injection-v1` for injections planted in
+records) and on benign text you point it at, to measure false alarms on your own
+traffic. It prints rates only, never sample text.
+
+It also scores decision models: any model an [Ollaya](https://ollaya.dev) server
+runs (`--ollaya laya decider:4b qwen3guard ...`) or Ollama 0.35+ serves at
+`/v1/systemone` (`--ollama tev1:4b nimble:9b`), asked the same two questions
+from laya's guard preset, and laya through its own package (`--laya`). Each run
+saves per-sample scores (label, source, score; no text), and
+`--combine` then compares "any model", "at least 2", mean score and every
+two-model cascade without scoring again. A cascade is what `server.py` does with
+`--judge-above`: the first model flags alone when sure and asks the second when
+unsure. `--export-benign FILE` copies your benign text into one file for scoring
+on another machine with `--benign-file`.
+
+## Behaviour to know
+
+- **Fail-open.** A guard error lets the call through and prints
+  `tool-guard: internal error ... this call was not checked`.
+- **Notes on outgoing text arrive after the call.** Secrets, personal IDs and
+  `"block": true` rules are the only things stopped beforehand.
+- **Rules see the text a person reads**: the command minus arguments that name
+  local files or folders, plus body files. Not the tool's description field,
+  and not a commit's code, so a rule never trips on an upload path or a diff.
+- **Read is not filtered**, so Claude can still get a file's exact bytes to
+  edit it.
+- **Cost:** about 200 ms per checked call when Python is started directly,
+  plus about 100 ms for the `sh` launcher the plugin uses.
+- **Commands count where they run, not where they are mentioned**: after `;`,
+  `&&`, `|` or inside `$( )`, behind `rtk`, `sudo`, `env`, `timeout` or `VAR=x`,
+  as a path or through PowerShell's `&`, and inside `bash -c` or `pwsh -Command`.
+  A name inside a heredoc, a quoted string or an argument (`grep ssh notes.md`) does not.
+- **A local command** is blocked only for a known secret value. Secret shapes
+  in a command that does not leave the machine (`echo`, a build) pass.
+
+## Test
+
+```sh
+python -m unittest discover -s tests
+```

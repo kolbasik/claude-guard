@@ -1,0 +1,295 @@
+<title>tool-guard Model Benchmark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column for prose (66ch), tables at full column width below each section's lede;
+   sections are the unit of reading and of pagination. */
+:root{
+  --ground:#F5F6F9; --surface:#FFFFFF; --sunk:#ECEEF4;
+  --ink:#141722; --ink-soft:#4A5064; --ink-faint:#6F7589;
+  --rule:#D7DBE5; --rule-strong:#B3B9CB;
+  --accent:#2B47A8; --accent-soft:#E4E9F8;
+  --good:#1D7446; --warn:#8A5F00; --bad:#B0291F;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ground:#0F1118; --surface:#171A24; --sunk:#1E2230;
+  --ink:#E5E8F0; --ink-soft:#A7ADBE; --ink-faint:#8189A0;
+  --rule:#2A3040; --rule-strong:#3D4459;
+  --accent:#93A7FF; --accent-soft:#232C4D;
+  --good:#5CC88F; --warn:#E2B441; --bad:#F0806F; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ground:#0F1118; --surface:#171A24; --sunk:#1E2230;
+  --ink:#E5E8F0; --ink-soft:#A7ADBE; --ink-faint:#8189A0;
+  --rule:#2A3040; --rule-strong:#3D4459;
+  --accent:#93A7FF; --accent-soft:#232C4D;
+  --good:#5CC88F; --warn:#E2B441; --bad:#F0806F; color-scheme:dark}
+
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;
+  padding-inline:16px;padding-block:32px 56px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.15;text-wrap:balance;margin:0}
+h1{font-size:2.1rem;letter-spacing:-.01em}
+h2{font-size:1.45rem}
+p{margin:0;max-width:66ch}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:1.08rem;color:var(--ink)}
+.meta{font-size:.85rem;color:var(--ink-soft)}
+section{display:grid;gap:14px;min-width:0}
+section > p{color:var(--ink-soft)}
+section > p strong{color:var(--ink);font-weight:600}
+
+.key{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);
+  border:1px solid var(--rule)}
+.key div{background:var(--surface);padding:14px 16px;display:grid;gap:4px}
+.key b{font-family:var(--display);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent)}
+.key span{font-size:.82rem;color:var(--ink-soft)}
+
+.pipeline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.9rem}
+.pipeline .step{background:var(--surface);border:1px solid var(--rule);padding:8px 12px;display:grid;gap:2px}
+.pipeline .step small{color:var(--ink-faint);font-size:.76rem}
+.pipeline .arrow{color:var(--ink-faint);font-family:var(--mono)}
+
+.tblwrap{overflow-x:auto;background:var(--surface);border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:.86rem}
+th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--rule)}
+thead th{font-family:var(--mono);font-weight:500;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--ink-faint);background:var(--sunk);border-bottom:1px solid var(--rule-strong)}
+thead tr.group th{text-align:center;border-bottom:1px solid var(--rule)}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tr.live td{background:var(--accent-soft)}
+.chip{display:inline-block;font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;
+  padding:1px 6px;margin-left:6px;border:1px solid var(--accent);color:var(--accent);vertical-align:1px}
+.good{color:var(--good);font-weight:600}
+.bad{color:var(--bad);font-weight:600}
+.dim{color:var(--ink-faint)}
+td small{display:block;color:var(--ink-faint);font-size:.76rem}
+.note{font-size:.84rem;color:var(--ink-soft);max-width:none}
+
+ul.limits{margin:0;padding-left:1.1rem;display:grid;gap:8px;max-width:78ch;color:var(--ink-soft)}
+ul.limits strong{color:var(--ink);font-weight:600}
+code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4px}
+.contd{display:none}
+
+@page{size:A4 landscape;margin:12mm 13mm}
+@media print{
+  :root,:root[data-theme="dark"],:root[data-theme="light"],:root:not([data-theme="light"]){
+    --ground:#FFFFFF; --surface:#FFFFFF; --sunk:#F1F3F8;
+    --ink:#101219; --ink-soft:#434A5E; --ink-faint:#646B80;
+    --rule:#D3D7E4; --rule-strong:#AEB4C8;
+    --accent:#2B47A8; --accent-soft:#E8ECF9;
+    --good:#1A6A3F; --warn:#7A5400; --bad:#A0241B; color-scheme:light}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-shadow:none !important}
+  body{background:#FFFFFF;font-size:10.5pt;line-height:1.45;padding:0}
+  .wrap{max-width:none;gap:22px}
+  h1{font-size:20pt} h2{font-size:14pt}
+  h1,h2,h3{break-after:avoid-page;page-break-after:avoid}
+  .lede,.key,.contd{break-after:avoid-page;page-break-after:avoid}
+  p{orphans:3;widows:3}
+  .tblwrap,.note,.key,.pipeline{break-inside:avoid;page-break-inside:avoid}
+  section{break-inside:avoid;page-break-inside:avoid;margin:0 0 6px}
+  tr,thead{break-inside:avoid;page-break-inside:avoid}
+  thead{display:table-header-group}
+  .tblwrap{overflow:visible !important}
+  table{min-width:0;font-size:9pt}
+  th,td{padding:5px 7px}
+  .contd{display:block}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">tool-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02</span>
+  <h1>Which model should read what comes from outside</h1>
+  <p class="lede">The live setup scores every text from outside with Horizon-Labs' classifier and laya:en, and lets Claude Sonnet decide everything either finds suspect. It catches 83%, 94% and 79% of the injections in three held-out test sets, the last one hidden inside tool output, and wrongly flags 7 of our 240 own texts. A clean outside read costs about a quarter of a second; roughly 40% of them wait about 2 seconds more for Claude.</p>
+  <p class="meta">Scoring server: Apple M5 Pro, 24 GB, on the Mac that hosts the Windows VM. Hook: Windows 11 ARM64 VM, 8 GB. Models run locally; only Claude, which already reads this session, sees text off the machine.</p>
+</header>
+
+<section>
+  <span class="eyebrow">At a glance</span>
+  <div class="key">
+    <div><b>94%</b><span>of xTRam1 test injections caught by the live setup (Horizon-Labs alone: 56%)</span></div>
+    <div><b>79%</b><span>of injections hidden inside tool output caught, on AgentInjectionBench (Horizon-Labs alone: 65%)</span></div>
+    <div><b>2.9%</b><span>of our own tickets, notes, Finnish UI strings and READMEs wrongly flagged (7 of 240)</span></div>
+    <div><b>0.26 s</b><span>added to a clean outside read by the whole hook; about 2 s more when Claude has to decide</span></div>
+  </div>
+  <div class="pipeline" aria-label="The live pipeline">
+    <div class="step">Patterns and secrets<small>every call, in the hook</small></div><span class="arrow">→</span>
+    <div class="step">Horizon-Labs and laya:en<small>every outside text, about 70 ms</small></div><span class="arrow">→</span>
+    <div class="step">Claude Sonnet, no thinking<small>if either scores 0.5 or more, about 2 s</small></div><span class="arrow">→</span>
+    <div class="step">Note to Claude, log, toast<small>toast only when confirmed</small></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">How it was measured</span>
+  <h2>Held-out attacks, and our own text for false alarms</h2>
+  <p>Attacks came from two published labelled sets, scored as they are: the 116-row test split of <strong>deepset/prompt-injections</strong> (60 injections) and the first 800 rows of the <strong>xTRam1/safe-guard-prompt-injection</strong> test split (241 injections). False alarms were measured on those sets' benign rows and on <strong>240 of our own texts</strong>: 60 each of vault notes, ticket notes, Finnish UI strings from the tendering monolith, and repo READMEs. A model flags a text when its score reaches the threshold, 0.9 unless stated.</p>
+  <p>Injections hidden inside tool output were measured on <strong>AgentInjectionBench</strong> (Apache-2.0, pinned revision ef230359): 142 cases where the attack sits in a tool result, MCP response, API response, RAG document or file, and 40 benign controls written to look attack-adjacent. Each case was scored on the text its tools returned, which is what the hook sees.</p>
+  <p>NVIDIA's indirect-injection set was dropped from the comparison: Horizon-Labs' published build scripts train on all of it, and on deepset's train split, so scores there measure memory. Prompt Guard 2 was scored from Gravitee's ungated ONNX build, because Meta's own is gated.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Classifiers</span>
+  <h2>Horizon-Labs catches three to five times more than Prompt Guard 2</h2>
+  <p>Both run as ONNX models with no PyTorch. Horizon-Labs is the only one that catches most attacks; Prompt Guard 2 almost never fires, and its quantized build loses about half of what the full-precision one catches.</p>
+  <div class="tblwrap"><table>
+    <thead>
+      <tr class="group"><th></th><th></th><th colspan="2">Caught</th><th colspan="5">False alarms</th><th colspan="2">Per text</th></tr>
+      <tr><th>Model</th><th>Threshold</th><th class="n">deepset</th><th class="n">xTRam1</th><th class="n">xTRam1</th><th class="n">vault</th><th class="n">tickets</th><th class="n">Finnish UI</th><th class="n">READMEs</th><th class="n">median</th><th class="n">p95</th></tr>
+    </thead>
+    <tbody>
+      <tr class="live"><td>Horizon-Labs prompt-injection-guard-base<span class="chip">live</span><small>ModernBERT, 308M, 641 MB quantized, Apache-2.0</small></td><td>0.9</td><td class="n">38.3%</td><td class="n">55.6%</td><td class="n">0.4%</td><td class="n">3.3%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td><td class="n">14 ms</td><td class="n">63 ms</td></tr>
+      <tr><td>Horizon-Labs, looser threshold</td><td>0.5</td><td class="n">65.0%</td><td class="n">80.5%</td><td class="n">0.7%</td><td class="n">6.7%</td><td class="n bad">10.0%</td><td class="n">0%</td><td class="n">3.3%</td><td class="n">14 ms</td><td class="n">63 ms</td></tr>
+      <tr><td>Prompt Guard 2 86M, full precision<small>1.1 GB, Llama 4 licence</small></td><td>0.9</td><td class="n">13.3%</td><td class="n">42.7%</td><td class="n">0.2%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">1.7%</td><td class="n">29 ms*</td><td class="n">169 ms*</td></tr>
+      <tr><td>Prompt Guard 2 86M, quantized<small>281 MB</small></td><td>0.9</td><td class="n">5.0%</td><td class="n">27.0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">15 ms*</td><td class="n">92 ms*</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">False alarms on xTRam1 are its 559 benign rows; deepset's 56 benign rows raised none from any classifier. * Timed on the Windows VM; Horizon-Labs was timed on the Mac, where it runs live (45 ms median on the VM). ProtectAI's deberta-v3 v2 was downloaded but not scored: it is archived, English only and stopped 22% of attacks in Meta's AgentDojo test.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Decision models</span>
+  <h2>tev1:4b is the first one quiet enough to flag alone; laya:en flags over a quarter of our tickets</h2>
+  <p>These are free "System 1" decision models in the style of TypeSafe Jev, asked the same two questions from laya's guard preset (injection, jailbreak). The Ollaya models read our tickets and notes, which are full of instructions written for people, as attacks; none of them is usable alone. <strong>tev1:4b</strong>, served by Ollama 0.35's <code>/v1/systemone</code>, is the exception: at 0.5 it catches more than laya:en does at 0.9 and wrongly flags 2 of our 240 texts. Its scores rarely reach 0.9, so it is read at 0.5.</p>
+  <div class="tblwrap"><table>
+    <thead>
+      <tr class="group"><th></th><th colspan="2">Caught</th><th colspan="5">False alarms</th><th colspan="2">Per text</th></tr>
+      <tr><th>Model</th><th class="n">deepset</th><th class="n">xTRam1</th><th class="n">xTRam1</th><th class="n">vault</th><th class="n">tickets</th><th class="n">Finnish UI</th><th class="n">READMEs</th><th class="n">median</th><th class="n">p95</th></tr>
+    </thead>
+    <tbody>
+      <tr class="live"><td>laya:en<span class="chip">live, as screen</span><small>ModernBERT-large, 421M, 853 MB, Apple GPU</small></td><td class="n">41.7%</td><td class="n good">85.5%</td><td class="n">6.3%</td><td class="n bad">45.0%</td><td class="n bad">28.3%</td><td class="n bad">33.3%</td><td class="n bad">20.0%</td><td class="n">39 ms</td><td class="n">123 ms</td></tr>
+      <tr><td>laya:multilingual<small>mmBERT, 322M, 683 MB</small></td><td class="n">21.7%</td><td class="n">56.8%</td><td class="n">2.9%</td><td class="n bad">20.0%</td><td class="n bad">56.7%</td><td class="n bad">16.7%</td><td class="n bad">31.7%</td><td class="n">15 ms</td><td class="n">47 ms</td></tr>
+      <tr><td>qwen3guard<small>0.6B, fixed safety questions; jailbreak category used</small></td><td class="n">0%</td><td class="n">10.4%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">484 ms</td><td class="n">882 ms</td></tr>
+      <tr><td>nli<small>zero-shot DeBERTa, ~400M</small></td><td class="n">0%</td><td class="n">0.8%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">98 ms</td><td class="n">426 ms</td></tr>
+      <tr><td>tev1:4b, at 0.5<small>Together AI, Qwen3.5 fine-tune, 4.5 GB, Ollama, Apple GPU</small></td><td class="n">66.7%</td><td class="n good">93.8%</td><td class="n">0.7%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">3.3%</td><td class="n">433 ms</td><td class="n">1,340 ms</td></tr>
+      <tr><td>nimble:9b, at 0.5<small>Bespoke Labs, 9B, 9.5 GB, Ollama, Apple GPU</small></td><td class="n">51.7%</td><td class="n">79.7%</td><td class="n">0.4%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n bad">1,449 ms</td><td class="n bad">3,019 ms</td></tr>
+      <tr><td>tev1:0.8b, at 0.5<small>Together AI, 811 MB, Ollama</small></td><td class="n">78.3%</td><td class="n">89.6%</td><td class="n bad">35.8%</td><td class="n bad">96.7%</td><td class="n bad">93.3%</td><td class="n bad">80.0%</td><td class="n bad">75.0%</td><td class="n">111 ms</td><td class="n">497 ms</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Four larger Ollaya models were scored only as second opinions, on the 84 texts Horizon-Labs was unsure of, because each call costs seconds on this Mac: jevk5 255 ms median (713 ms p95), winnow:e4b 363 ms (707 ms, Apple GPU), kev 1.4 s (11.3 s), decider:4b 2.9 s (11.6 s, CPU at full precision). At 0.9, tev1:4b catches 1.7% and 36.1%, nimble:9b 18.3% and 43.6%, and tev1:0.8b 0% and 10.8%. Inside tool output (AgentInjectionBench), alone: laya:en at 0.9 catches 28.2% with 2.5% false alarms, tev1:4b at 0.5 30.3% with none, nimble:9b 21.8% with none. Of deepset's 56 benign rows, laya:en, tev1:4b and nimble:9b flagged one each, tev1:0.8b 20, the others none.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Combinations</span>
+  <h2>Without Claude, Horizon-Labs or tev1:4b catches the most</h2>
+  <p>In a cascade, Horizon-Labs flags alone above 0.9 and hands its unsure band (0.5 to 0.9) to a second model, which flags at 0.9 (tev1:4b at 0.5). Asking laya:en this way adds 10 to 20 points of catch at the same false-alarm rate on tickets; tev1:4b adds 3 to 13 more. Flagging whenever any model fires floods our own text with alarms, except with tev1:4b, which is quiet enough to flag on its own.</p>
+  <div class="tblwrap"><table>
+    <thead>
+      <tr class="group"><th></th><th colspan="2">Caught</th><th colspan="5">False alarms</th></tr>
+      <tr><th>Setup</th><th class="n">deepset</th><th class="n">xTRam1</th><th class="n">xTRam1</th><th class="n">vault</th><th class="n">tickets</th><th class="n">Finnish UI</th><th class="n">READMEs</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Horizon-Labs alone</td><td class="n">38.3%</td><td class="n">55.6%</td><td class="n">0.4%</td><td class="n">3.3%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs → laya:en<small>the live setup until 2026-09-29 22:05</small></td><td class="n">48.3%</td><td class="n">75.5%</td><td class="n">0.4%</td><td class="n">6.7%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs → tev1:4b, at 0.5</td><td class="n">61.7%</td><td class="n">78.8%</td><td class="n">0.4%</td><td class="n">3.3%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs at 0.9 or tev1:4b at 0.5</td><td class="n">75.0%</td><td class="n good">95.0%</td><td class="n">0.9%</td><td class="n">3.3%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">6.7%</td></tr>
+      <tr><td>Horizon-Labs → laya:en or winnow:e4b</td><td class="n">50.0%</td><td class="n">78.4%</td><td class="n">0.4%</td><td class="n">6.7%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs → winnow:e4b</td><td class="n">41.7%</td><td class="n">67.2%</td><td class="n">0.4%</td><td class="n">3.3%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs → laya:multilingual</td><td class="n">41.7%</td><td class="n">64.3%</td><td class="n">0.4%</td><td class="n">5.0%</td><td class="n">5.0%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs → laya:en and winnow:e4b</td><td class="n">40.0%</td><td class="n">64.3%</td><td class="n">0.4%</td><td class="n">3.3%</td><td class="n">3.3%</td><td class="n">0%</td><td class="n">3.3%</td></tr>
+      <tr><td>Horizon-Labs → decider:4b</td><td class="n">38.3%</td><td class="n">60.2%</td><td class="n dim" colspan="5">same as Horizon-Labs alone</td></tr>
+      <tr><td>Horizon-Labs → qwen3guard, jevk5, kev or nli</td><td class="n">38.3%</td><td class="n">55.6–58.1%</td><td class="n dim" colspan="5">same as Horizon-Labs alone</td></tr>
+      <tr><td>Any of Horizon-Labs, laya:en, laya:multilingual</td><td class="n">65.0%</td><td class="n">92.5%</td><td class="n">8.1%</td><td class="n bad">53.3%</td><td class="n bad">63.3%</td><td class="n bad">43.3%</td><td class="n bad">46.7%</td></tr>
+      <tr><td>At least 2 of those 3</td><td class="n">28.3%</td><td class="n">69.3%</td><td class="n">1.4%</td><td class="n bad">15.0%</td><td class="n bad">25.0%</td><td class="n">6.7%</td><td class="n">8.3%</td></tr>
+      <tr><td>Mean score of those 3</td><td class="n">10.0%</td><td class="n">47.3%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td><td class="n">0%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">False alarms on xTRam1 are its 559 benign rows; of deepset's 56, only "any of" and "Horizon-Labs or tev1:4b" flagged one. Inside tool output the two tev1:4b setups catch 66.9% and 69.0%, with Horizon-Labs' own 15% false alarms.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Claude judge</span>
+  <h2>Sonnet without thinking is both the most accurate and the fastest judge</h2>
+  <p>Claude reads only what the cascade flags and has the last word in the note; it never removes a warning, because it has read the suspect text itself. Judged here: 30 injections and all 10 benign texts among the 221 the live cascade flags. Thinking decides the speed: with it, Haiku wrote 650 to 1,150 tokens before a one-line answer.</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Judge</th><th class="n">Keeps injections</th><th class="n">Clears false alarms</th><th class="n">Median</th><th class="n">Slowest</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr class="live"><td>Claude Sonnet, thinking off<span class="chip">live</span></td><td class="n good">30 / 30</td><td class="n">10 / 10</td><td class="n">1.9 s</td><td class="n">2.8 s</td><td>Best on both counts</td></tr>
+      <tr><td>Claude Haiku, thinking on</td><td class="n">28 / 30</td><td class="n">10 / 10</td><td class="n">5.1 s</td><td class="n bad">24.7 s</td><td>Accurate, too slow</td></tr>
+      <tr><td>Claude Haiku, thinking off, sharper prompt</td><td class="n">27 / 30</td><td class="n">10 / 10</td><td class="n">2.2 s</td><td class="n">6.6 s</td><td>Misses 1 in 10</td></tr>
+      <tr><td>Claude Haiku, thinking off</td><td class="n bad">23 / 30</td><td class="n">10 / 10</td><td class="n">2.2 s</td><td class="n">3.9 s</td><td>Misses 1 in 4</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The judge runs as <code>claude -p --model sonnet --thinking disabled</code> with no tools, settings sources, MCP servers, skills or saved session, its own empty config and working folders, and telemetry and update checks off. <code>--bare</code> would strip more but refuses subscription logins. Usage counts against the Claude plan; at pay-per-use prices a judgement is about $0.002.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Letting Claude decide</span>
+  <h2>Claude on everything either model finds suspect catches the most</h2>
+  <p>Instead of only annotating flags, Claude can decide the grey zone: whatever Horizon-Labs scores 0.5 to 0.9, and, with laya:en as a screen that never flags by itself, whatever laya:en scores 0.5 or more. Claude kept every injection it was shown in these runs and cleared 26 of 27 benign texts, so it adds catches without adding noise. The price is how much ordinary text waits for it.</p>
+  <div class="tblwrap"><table>
+    <thead>
+      <tr class="group"><th></th><th colspan="3">Caught</th><th colspan="2">False alarms</th><th></th></tr>
+      <tr><th>Setup</th><th class="n">deepset</th><th class="n">xTRam1</th><th class="n">tool output</th><th class="n">our texts</th><th class="n">tool-output controls</th><th class="n">our texts sent to Claude</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Horizon-Labs alone, 0.9</td><td class="n">38.3%</td><td class="n">55.6%</td><td class="n">64.8%</td><td class="n">2.5%</td><td class="n">15%</td><td class="n dim">–</td></tr>
+      <tr><td>Horizon-Labs → laya:en as confirmer</td><td class="n">48.3%</td><td class="n">75.5%</td><td class="n">66.9%</td><td class="n">3.3%</td><td class="n">15%</td><td class="n">3%</td></tr>
+      <tr><td>Horizon-Labs 0.5 or more → Claude</td><td class="n">65.0%</td><td class="n">80.5%</td><td class="n">69.7%</td><td class="n">2.5%</td><td class="n">15%</td><td class="n">5%</td></tr>
+      <tr><td>Horizon-Labs or laya:en 0.9 or more → Claude</td><td class="n">78.3%</td><td class="n">92.9%</td><td class="n">73.2%</td><td class="n">2.9%</td><td class="n">15%</td><td class="n">35%</td></tr>
+      <tr class="live"><td>Horizon-Labs or laya:en 0.5 or more → Claude<span class="chip">live</span></td><td class="n">83.3%</td><td class="n good">93.8%</td><td class="n good">78.9%</td><td class="n">2.9%</td><td class="n">15%</td><td class="n bad">40%</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">"Tool output" is AgentInjectionBench. Its 6 false alarms of 40 are the same in every setup and all come from Horizon-Labs at 0.9 or more; Claude clears 5, so 1 reaches the user as a notification. No laya:en threshold makes a cheaper middle: it scores most ordinary text near 1.0, so even at 0.999 it sends 23% of our texts to Claude.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Ollama decision models · 2026-10-02</span>
+  <h2>tev1:4b as the screen would cut Claude's load to a seventh, and miss more inside tool output</h2>
+  <p>Ollama 0.35 serves decision models at <code>/v1/systemone</code>, with the same request as Ollaya. Swapping laya:en for one of them in the live setup keeps everything else equal: Horizon-Labs at 0.9 flags alone, and whatever Horizon-Labs or the screen scores 0.5 or more goes to Claude Sonnet, whose verdicts are reused from the runs above. <strong>laya:en stays the screen</strong>: it catches 7 more points of the injections hidden in tool output, which is what the hook exists for. tev1:4b is the better second opinion on a server without a Claude judge.</p>
+  <div class="tblwrap"><table>
+    <thead>
+      <tr class="group"><th></th><th colspan="3">Caught</th><th colspan="2">False alarms</th><th></th><th colspan="2">Screen, per text</th></tr>
+      <tr><th>Screen</th><th class="n">deepset</th><th class="n">xTRam1</th><th class="n">tool output</th><th class="n">our texts</th><th class="n">tool-output controls</th><th class="n">our texts sent to Claude</th><th class="n">median</th><th class="n">p95</th></tr>
+    </thead>
+    <tbody>
+      <tr class="live"><td>laya:en<span class="chip">live</span></td><td class="n good">83.3%</td><td class="n">93.8%</td><td class="n good">78.9%</td><td class="n">2.9%</td><td class="n">15%</td><td class="n bad">40%</td><td class="n good">39 ms</td><td class="n">123 ms</td></tr>
+      <tr><td>tev1:4b<small>tool output: 1.1 s median, 2.2 s p95</small></td><td class="n">78.3%</td><td class="n good">96.3%</td><td class="n">71.8%</td><td class="n">2.5%</td><td class="n">15%</td><td class="n good">6%</td><td class="n">433 ms</td><td class="n">1,340 ms</td></tr>
+      <tr><td>nimble:9b<small>tool output: 1.5 s median, 1.8 s p95</small></td><td class="n">76.7%</td><td class="n">91.7%</td><td class="n">70.4%</td><td class="n">2.5%</td><td class="n">15%</td><td class="n good">5%</td><td class="n bad">1,449 ms</td><td class="n bad">3,019 ms</td></tr>
+      <tr><td>tev1:0.8b</td><td class="n dim" colspan="5">scores almost every text 0.5 to 0.9</td><td class="n bad">87%</td><td class="n">111 ms</td><td class="n">497 ms</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Claude judged 21 texts tev1:4b sends that laya:en never did; every other verdict was reused. The trade in waiting is close: laya:en costs every outside text about 40 ms and sends 40% of them on for about 2 s, tev1:4b costs every one about 430 ms and sends 6% on. Both tev1 sizes refuse a prompt over 2,050 tokens instead of truncating it, so a long outside text has to be split into several calls; nimble:9b reads 256K tokens but took 6.8 s on a 35,000-character text.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Speed in use</span>
+  <h2>What a tool call pays for the check</h2>
+  <p>Timed through the real hook with the live configuration, median of five runs on the Windows VM. Most of the fixed cost is Python starting; only outside text travels to the Mac, and only flagged text waits for Claude.</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Tool call</th><th class="n">Time</th><th>What runs</th></tr></thead>
+    <tbody>
+      <tr><td>Local command output</td><td class="n">124 ms</td><td>Secret redaction and patterns only</td></tr>
+      <tr><td>Outgoing Jira comment</td><td class="n">119 ms</td><td>Secret and style checks before sending</td></tr>
+      <tr><td>Outside text, short and harmless</td><td class="n">255 ms</td><td>Plus Horizon-Labs and laya:en on the Mac</td></tr>
+      <tr><td>Outside text, 38,561 characters</td><td class="n">508 ms</td><td>Horizon-Labs over overlapping windows</td></tr>
+      <tr><td>Outside text Claude has to decide</td><td class="n">1.7–3.8 s</td><td>Plus Claude Sonnet, and the desktop toast (about 0.5 s) when confirmed</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <span class="eyebrow">Footprint</span>
+  <h2>What stays installed</h2>
+  <p>On the Mac: Horizon-Labs (675 MB with its tokenizer), laya:en in Ollaya (853 MB) and a Python environment with ONNX Runtime (about 160 MB). The trial pulled 32 GB of Ollaya models; everything but laya:en was removed afterwards. Two login items start Ollaya and the scoring server and restart them if they stop. Nothing on the Windows side needs PyTorch. The 2026-10-02 trial pulled tev1:0.8b, tev1:4b and nimble:9b into Ollama (14.8 GB) and removed them afterwards; the live setup does not use Ollama.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Limits of these numbers</span>
+  <h2>Read small differences as noise</h2>
+  <ul class="limits">
+    <li><strong>Small samples.</strong> Each of our benign sources has 60 texts, so 3.3% is two texts; the judge was tested on 40.</li>
+    <li><strong>Mostly direct, English attacks.</strong> The one set of injections hidden inside tool output, AgentInjectionBench, has 182 cases, so read its numbers as direction, not precision. No Finnish attacks were tested; Finnish text raised no false alarm from Horizon-Labs.</li>
+    <li><strong>Young software.</strong> Horizon-Labs v2, laya and Ollaya were between six and eleven days old when measured, tev1 and nimble about a day old, and their publishers' own benchmarks are unaudited. Together AI notes it has not fully tested tev1 against prompt injection.</li>
+    <li><strong>A tripwire, not a boundary.</strong> A detected injection becomes a note and, when confirmed, a notification; nothing is blocked on it. Outgoing secrets and personal IDs are blocked.</li>
+    <li><strong>Long texts.</strong> laya:en reads about 512 tokens, so as a screen it sees the start of a long ticket; Horizon-Labs reads the whole text in overlapping windows. tev1 rejects anything over 2,050 tokens, so the benchmark splits such a text in halves and keeps the higher score; only 6 of the 1,338 samples are over 4,000 characters.</li>
+    <li><strong>Claude is the linchpin.</strong> If it cannot run (an expired token, say), the grey zone gets no verdict and only Horizon-Labs' 0.9 flags remain.</li>
+  </ul>
+</section>
+</div>

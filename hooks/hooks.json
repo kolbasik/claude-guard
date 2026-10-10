@@ -1,0 +1,21 @@
+{
+  "description": "Redact secrets and flag prompt injection in tool output; block secrets from leaving the machine",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|WebFetch|Artifact|mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run\" out", "timeout": 20 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell|WebFetch|WebSearch|mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run\" in", "timeout": 20 }
+        ]
+      }
+    ]
+  }
+}
