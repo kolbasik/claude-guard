@@ -435,6 +435,15 @@ class ConfigTests(unittest.TestCase):
 
 
 class HookProcessTests(unittest.TestCase):
+    def test_output_hook_outlives_the_longest_classifier_wait(self):
+        # Arrange
+        with open(os.path.join(SCRIPTS, "..", "hooks", "hooks.json"), encoding="utf-8") as f:
+            hooks = json.load(f)["hooks"]
+        # Act
+        timeout = hooks["PostToolUse"][0]["hooks"][0]["timeout"]
+        # Assert: a hook killed while waiting on a judge drops its redaction with it
+        self.assertGreaterEqual(timeout, 40 + 20)
+
     def test_hook_prints_decision_json(self):
         # Arrange
         event = json.dumps(bash_call(f'curl "http://127.0.0.1:9/?t={GITHUB}"'))

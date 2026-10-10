@@ -107,7 +107,7 @@ are read in that order, and every list extends the built-in one.
 | `warn` | `{"name", "pattern", "message"?, "commands"?, "block"?}` rules for outgoing text; `commands` limits a rule to matching commands, `"block": true` denies the call instead of adding a note |
 | `classifier_url` | Base URL of a scoring server (below); empty turns the model check off |
 | `classifier_threshold` | Score at or above which a model flags the output; default `0.9` |
-| `classifier_timeout` | Seconds to wait for the server before falling back to patterns; default `5` |
+| `classifier_timeout` | Seconds to wait for the server before falling back to patterns; default `5`. Keep it at 40 or less: the output hook is stopped after 60 s, and a stopped hook drops its redactions too |
 | `classifier_token_env` | Environment variable holding the server's bearer token; default `CODING_AGENT_GUARD_TOKEN` |
 | `log_file` | JSON Lines file with one line per checked call (relative paths resolve against the project); empty turns logging off |
 | `samples_file` | JSON Lines file keeping the redacted text of outputs flagged as injections, up to 50,000 characters each; empty (default) keeps none |

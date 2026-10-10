@@ -13,7 +13,7 @@
       {
         "matcher": "Bash|PowerShell|WebFetch|WebSearch|mcp__.*",
         "hooks": [
-          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run\" in", "timeout": 20 }
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/run\" in", "timeout": 60 }
         ]
       }
     ]
