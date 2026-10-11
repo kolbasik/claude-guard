@@ -278,9 +278,9 @@ def model_hits(text, classifier):
     # A screen's score only decided whether Claude looked; it never flags by itself.
     hits = [f"model:{name}" for name, p in scores.items()
             if isinstance(p, (int, float)) and p >= classifier.threshold and not name.startswith("screen:")]
-    # The judge (Claude, a --chat-model, or Codex for a Codex session) read the suspect text itself, so it may annotate
-    # a warning but never cancel one.
-    judge = next((k for k in ("codex", "chat") if k in scores), "claude")
+    # The judge (Claude, a --chat-model, agy, or Codex for a Codex session) read the suspect text itself, so it may
+    # annotate a warning but never cancel one.
+    judge = next((k for k in ("codex", "agy", "chat") if k in scores), "claude")
     if hits and scores.get(judge) == 0.0:
         hits.append(f"{judge}-judge:ordinary-data")
     return hits
@@ -560,8 +560,9 @@ def finish(event, rules, cfg, result, hook_ms=None):
             record[key] = value
     for finding in rules.events:   # at most one per call
         record.update({k: v for k, v in finding.items() if v not in (None, [], "")})
-    # Kept under its old name so earlier log lines still count; true for the Codex and chat judges too.
-    record["claude_asked"] = bool(c.scores) and any(k in c.scores for k in ("claude", "claude_error", "codex", "codex_error", "chat", "chat_error"))
+    # Kept under its old name so earlier log lines still count; true for the Codex, agy and chat judges too.
+    record["claude_asked"] = bool(c.scores) and any(k in c.scores for k in ("claude", "claude_error", "codex", "codex_error",
+                                                                             "agy", "agy_error", "chat", "chat_error"))
     record["confirmed"] = confirmed(record)
     record["notified"] = record["confirmed"] and cfg["notify"] == "desktop"
     if record["confirmed"]:

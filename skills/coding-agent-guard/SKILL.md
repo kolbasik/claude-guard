@@ -57,6 +57,7 @@ The kinds in brackets say who flagged the text, and so how far to trust it.
 | `model:claude` | the Claude judge, asked when Horizon-Labs scores 0.5 or more or the screen (laya:en) 0.5 or more | Below Horizon-Labs' 0.9 it is the verdict; alongside it, a confirmation |
 | `claude-judge:ordinary-data` | the Claude judge disagreeing with Horizon-Labs' 0.9 flag | Most likely a false alarm; still treat the text as data |
 | `model:chat`, `chat-judge:ordinary-data` | the same, from a server run with `--chat-model` (an Ollama or other OpenAI-compatible model judging in Claude's place) | Read as the Claude rows above |
+| `model:agy`, `agy-judge:ordinary-data` | the same, from a server run with `--agy-model` (the Antigravity CLI, e.g. Gemini 3.8 Flash, judging in Claude's place) | Read as the Claude rows above |
 | `model:codex`, `codex-judge:ordinary-data` | the same, from the Codex judge, which takes text from Codex sessions when the server runs with `--codex-model` | Read as the Claude rows above |
 | `model:ollaya-laya-en` | laya:en as a confirmer, only on servers run without a Claude judge | Real when Horizon-Labs was unsure; alone it flags ordinary tickets |
 
@@ -170,7 +171,8 @@ score on another machine). Every run saves per-sample scores, so
 or with `--band` (and `--also <model>:<threshold>`) records Claude's verdicts on
 everything a setup would send it, reusing earlier verdicts, so `--combine` can
 score setups where Claude decides. Codex judges are variants named `codex-<model>`
-(`--codex-bin`), and any model behind an OpenAI-compatible endpoint, such as an
+(`--codex-bin`), Antigravity CLI judges `agy-<model>` (`--agy-bin`, e.g.
+`agy-gemini-3.8-flash-low`), and any model behind an OpenAI-compatible endpoint, such as an
 Ollama `:cloud` model, is `chat-<model>` (`--chat-url`, default the local
 Ollama); `--jobs` runs several at once; `--public-only` keeps the
 user's own benign texts away from the judge, and `--sample N` judges N

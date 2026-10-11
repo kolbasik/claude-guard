@@ -157,10 +157,13 @@ up only if the user asks for it. **Ask the user** first:
     for `:cloud` models, and it judged as well as Claude Sonnet 5 on public
     test texts. Text goes to Ollama's cloud. A local Ollama model keeps the
     text on that machine, but none has been benchmarked.
+  - They use Antigravity: `--agy-model gemini-3.8-flash-low`. It needs the
+    `agy` CLI signed in there. Text goes to Google. It missed more than Claude
+    Sonnet 5 on public test texts and takes about 8 s per text.
   - No judge: the classifier flags on its own.
 
-  `--claude-model` and `--chat-model` are one or the other. Either can be
-  combined with `--codex-model`.
+  `--claude-model`, `--chat-model` and `--agy-model` are one or the other. Any
+  of them can be combined with `--codex-model`.
 
 Each step below records what to do for both server types.
 

@@ -65,7 +65,7 @@ class Running:
 
     def __init__(self, token="", judge_url=None, judge_above=0.0, confirmers=(), confirm_above=0.5,
                  claude_cmd=None, claude_token_file=None, screens=(), screen_above=0.5, claude_above=0.9,
-                 codex_cmd=None, chat_url=None):
+                 codex_cmd=None, chat_url=None, agy_cmd=None):
         self.model = FakeModel()
         self.cwd = tempfile.mkdtemp()
         args = SimpleNamespace(host="127.0.0.1", port=0, judge_url=judge_url, judge_model="fake-judge" if judge_url else None,
@@ -76,7 +76,9 @@ class Running:
                                claude_cwd=os.path.join(self.cwd, "judge-cwd"), claude_config=os.path.join(self.cwd, "judge-config"),
                                codex_model="gpt-test" if codex_cmd else None, codex_cmd=codex_cmd, codex_timeout=30,
                                codex_cwd=os.path.join(self.cwd, "codex-judge", "cwd"),
-                               chat_model="gemma-test" if chat_url else None, chat_url=chat_url, chat_timeout=5)
+                               chat_model="gemma-test" if chat_url else None, chat_url=chat_url, chat_timeout=5,
+                               agy_model="gemini-test" if agy_cmd else None, agy_cmd=agy_cmd, agy_timeout=30,
+                               agy_dir=os.path.join(self.cwd, "agy-judge"))
         with mock.patch.dict(os.environ, {"CODING_AGENT_GUARD_TOKEN": token}):
             self.server = server.build_server(args, [self.model], confirmers, screens)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -210,7 +212,8 @@ class ClaudeJudgeTests(unittest.TestCase):
         # Assert
         joined = " ".join(f"[{a}]" for a in cmd)
         self.assertTrue(all(flag in joined for flag in ("[--thinking] [disabled]", "[--tools] []", "[--strict-mcp-config]",
-                                                        "[--setting-sources] []", "[--no-session-persistence]")))
+                                                        "[--setting-sources] []", "[--disable-slash-commands]",
+                                                        "[--no-session-persistence]")))
 
     def test_flagged_text_gets_claude_verdict(self):
         # Arrange
@@ -296,7 +299,11 @@ class CodexJudgeTests(unittest.TestCase):
         # Assert
         joined = " ".join(f"[{a}]" for a in cmd)
         self.assertTrue(all(flag in joined for flag in ("[--ephemeral]", "[--ignore-user-config]", "[--ignore-rules]",
-                                                        "[--disable] [hooks]", "[--disable] [plugins]",
+                                                        "[--disable] [hooks]", "[--disable] [plugins]", "[--disable] [apps]",
+                                                        "[-c] [skills.bundled.enabled=false]",
+                                                        "[-c] [skills.include_instructions=false]",
+                                                        "[--disable] [shell_tool]", "[--disable] [unified_exec]",
+                                                        "[--disable] [multi_agent]", "[--disable] [code_mode_host]",
                                                         "[--sandbox] [read-only]", "[--output-schema] [schema.json]")))
 
     def test_codex_session_gets_codex_verdict(self):
@@ -340,6 +347,121 @@ class CodexJudgeTests(unittest.TestCase):
         # Assert
         note = result["hookSpecificOutput"]["additionalContext"]
         self.assertEqual(("model:fake" in note, "codex-judge:ordinary-data" in note), (True, True))
+
+
+FAKE_AGY = r'''
+import json, os, sys
+args = sys.argv[1:]
+line = json.loads(sys.stdin.readline())
+text = line["message"]["content"]
+if os.environ.get("FAKE_AGY_FAIL"):
+    sys.stderr.write("prompt: " + text + "\nERROR: not signed in\n"); sys.exit(1)
+home = os.environ["HOME"]
+if (args[args.index("--agent") + 1] != "injection-judge" or args[-1] != "-p=" or line["event"] != "user"
+        or os.environ["USERPROFILE"] != home or not os.path.isfile(os.path.join(".agents", "agents", "injection-judge.md"))):
+    sys.exit(2)
+cid = "conv-1"
+root = os.path.join(home, ".gemini", "antigravity-cli")
+for folder in ("conversations", "brain/" + cid):
+    os.makedirs(os.path.join(root, folder), exist_ok=True)
+open(os.path.join(root, "conversations", cid + ".db"), "w").write(text)
+open(os.path.join(root, "brain", cid, "transcript.jsonl"), "w").write(text)
+result = {"conversation_id": cid, "status": "SUCCESS"}
+if not os.environ.get("FAKE_AGY_TIMEOUT"):
+    result["structured_output"] = {"injection": "MARKER_HIGH" in text and "MARKER_ORDINARY" not in text}
+print(json.dumps({"event": "init", "conversation_id": cid}))
+print(json.dumps({"event": "result", "result": result}))
+'''
+
+
+def fake_agy():
+    path = os.path.join(tempfile.mkdtemp(), "fake_agy.py")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(FAKE_AGY)
+    return [sys.executable, path]
+
+
+class AgyJudgeTests(unittest.TestCase):
+    def test_command_is_locked_down(self):
+        # Arrange
+        cli = ["agy"]
+        # Act
+        cmd = server.agy_command(cli, "gemini-test", "schema.json", 60)
+        # Assert
+        joined = " ".join(f"[{a}]" for a in cmd)
+        self.assertTrue(all(flag in joined for flag in ("[--agent] [injection-judge]", "[--disable-slash-commands]",
+                                                        "[--input-format] [stream-json]", "[--json-schema] [schema.json]",
+                                                        "[--print-timeout] [60s]", "[-p=]")))
+
+    def test_agent_has_no_tools_or_customizations(self):
+        # Arrange
+        agent = server.AGY_AGENT
+        # Act
+        flags = [line for line in agent.splitlines() if ":" in line]
+        # Assert
+        self.assertTrue(all(f in flags for f in ("excludeDefaultComponents: true", "inheritCustomizations: false",
+                                                 "inheritMcp: false", "tools: [finish]")))
+
+    def test_agy_model_decides_in_place_of_claude(self):
+        # Arrange
+        with Running(agy_cmd=fake_agy()) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="claude")
+        # Assert
+        self.assertEqual((reply["scores"].get("agy"), "claude" in reply["scores"]), (1.0, False))
+
+    def test_codex_session_keeps_its_codex_judge(self):
+        # Arrange
+        with Running(agy_cmd=fake_agy(), codex_cmd=fake_codex()) as s:
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page", agent="codex")
+        # Assert
+        self.assertEqual((reply["scores"].get("codex"), "agy" in reply["scores"]), (1.0, False))
+
+    def test_judged_text_is_not_kept(self):
+        # Arrange
+        with Running(agy_cmd=fake_agy()) as s:
+            root = os.path.join(s.cwd, "agy-judge", "home", ".gemini", "antigravity-cli")
+            # Act
+            post(s.url, "MARKER_HIGH secret page text")
+        # Assert
+        self.assertEqual((os.listdir(os.path.join(root, "conversations")), os.listdir(os.path.join(root, "brain"))), ([], []))
+
+    def test_timeout_without_verdict_is_an_error(self):
+        # Arrange
+        with Running(agy_cmd=fake_agy()) as s, mock.patch.dict(os.environ, {"FAKE_AGY_TIMEOUT": "1"}):
+            # Act
+            reply = post(s.url, "MARKER_HIGH in a page")
+        # Assert
+        self.assertEqual(reply["scores"]["agy_error"], "RuntimeError: agy exit 0")
+
+    def test_agy_error_never_carries_the_text(self):
+        # Arrange
+        with Running(agy_cmd=fake_agy()) as s, mock.patch.dict(os.environ, {"FAKE_AGY_FAIL": "1"}):
+            # Act
+            reply = post(s.url, "MARKER_HIGH secret page text")
+        # Assert
+        self.assertEqual(reply["scores"]["agy_error"], "RuntimeError: agy exit 1")
+
+    def test_disagreeing_agy_annotates_the_note(self):
+        # Arrange
+        with Running(agy_cmd=fake_agy()) as s:
+            event = web_output("A long enough page body with MARKER_HIGH and MARKER_ORDINARY in it.")
+            # Act
+            result = guard.on_output(event, guard_rules(s.url))
+        # Assert
+        note = result["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(("model:fake" in note, "agy-judge:ordinary-data" in note), (True, True))
+
+    def test_claude_and_agy_model_together_are_refused(self):
+        # Arrange
+        argv = ["server.py", "--model", "m", "--claude-model", "claude-sonnet-5", "--agy-model", "gemini-3.8-flash-low"]
+        err = io.StringIO()
+        # Act
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            server.main()
+        # Assert
+        self.assertIn("pick one", err.getvalue())
 
 
 class FakeScreen:

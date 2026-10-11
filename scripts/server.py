@@ -3,6 +3,7 @@
   python server.py --model DIR [--model DIR ...] [--host 127.0.0.1] [--port 8765]
                    [--confirm OLLAYA_MODEL ...] [--claude-model claude-sonnet-5 --claude-bin PATH]
                    [--codex-model MODEL --codex-bin PATH] [--chat-model MODEL --chat-url URL]
+                   [--agy-model gemini-3.8-flash-low --agy-bin PATH]
                    [--judge-url http://127.0.0.1:11434/v1 --judge-model NAME]
 
   POST /score  {"text": "...", "agent": "claude|codex"}  ->  {"scores": {"<model>": 0.97, ...}, "ms": 41}
@@ -17,12 +18,15 @@ session) only about text a classifier already flags; its yes/no is the score "cl
 --codex-model does the same with a locked-down `codex exec` for text from Codex sessions
 (score "codex"); without it, Codex sessions are judged by Claude too. --chat-model takes
 Claude's place with any model behind an OpenAI-compatible endpoint, such as gemma4:cloud
-on Ollama (score "chat").
+on Ollama (score "chat"). --agy-model takes Claude's place with a locked-down Antigravity
+CLI (`agy`) run, such as gemini-3.8-flash-low (score "agy").
 """
 import argparse
 import hmac
 import json
 import os
+import re
+import shutil
 import subprocess
 import threading
 import time
@@ -98,13 +102,19 @@ VERDICT_SCHEMA = {"type": "object", "properties": {"injection": {"type": "boolea
 
 
 def codex_command(cli, model, schema_file):
-    """A `codex exec` that only reads its input and answers: no user config, rules, hooks, plugins or session.
+    """A `codex exec` that only reads its input and answers: no user config, rules, hooks, plugins, apps, skills,
+    shell, sub-agents or session.
 
-    ponytail: Codex has no switch to turn its shell tool off, so the read-only sandbox is what keeps an
-    injected instruction from writing or reaching the network; a no-tools mode would close it fully.
+    Apps are the ChatGPT connectors (sites, plugin management, web search) that act outside the sandbox.
+    Skills are both unlisted and unloaded, so a `$skill` in the judged text cannot pull one in.
+    code_mode_host off makes code mode, which runs tools from a script, fail closed.
+    The read-only sandbox stays as the backstop for any tool Codex adds later.
     """
     return [*cli, "exec", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-            "--disable", "hooks", "--disable", "plugins", "--sandbox", "read-only", "--model", model,
+            "--disable", "hooks", "--disable", "plugins", "--disable", "apps",
+            "-c", "skills.bundled.enabled=false", "-c", "skills.include_instructions=false",
+            "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "multi_agent",
+            "--disable", "code_mode_host", "--sandbox", "read-only", "--model", model,
             "-c", 'model_reasoning_effort="low"', "--output-schema", schema_file, "-"]
 
 
@@ -123,6 +133,84 @@ def codex_judge(text, args):
         raise RuntimeError(f"codex exit {run.returncode}")
     reply = run.stdout
     return bool(json.loads(reply[reply.find("{"):reply.rfind("}") + 1]).get("injection"))
+
+
+# A tool-less main agent: no default tools, prompt sections or customizations (skills, plugins, rules,
+# MCP, hooks). `finish` stays because agy needs it to return structured output.
+AGY_AGENT = """---
+name: injection-judge
+description: Classifies one text as prompt injection or not. No tools.
+mainAgent: true
+subagent: false
+excludeDefaultComponents: true
+inheritCustomizations: false
+inheritMcp: false
+tools: [finish]
+---
+You answer one classification question about the text you are given and nothing else. You have no tools.
+"""
+
+
+def agy_command(cli, model, schema_file, timeout):
+    """An `agy` print run as the injection-judge agent, the prompt read as one stream-json line from stdin."""
+    return [*cli, "--print-timeout", f"{int(timeout)}s", "--model", model, "--agent", "injection-judge",
+            "--disable-slash-commands", "--input-format", "stream-json", "--output-format", "stream-json",
+            "--json-schema", schema_file, "-p="]
+
+
+def agy_judge(text, args):
+    """True when agy judges the text an injection. The text goes on stdin, never the command line.
+
+    agy runs with its own home folder, so no user plugin, hook or rule is even found, and its own workspace,
+    where the injection-judge agent lives.
+    """
+    home, workspace = os.path.join(args.agy_dir, "home"), os.path.join(args.agy_dir, "workspace")
+    agents = os.path.join(workspace, ".agents", "agents")
+    os.makedirs(agents, exist_ok=True)
+    os.makedirs(home, exist_ok=True)
+    with open(os.path.join(agents, "injection-judge.md"), "w", encoding="utf-8") as f:
+        f.write(AGY_AGENT)
+    schema_file = os.path.join(args.agy_dir, "verdict-schema.json")
+    with open(schema_file, "w", encoding="utf-8") as f:
+        json.dump(VERDICT_SCHEMA, f)
+    prompt = JUDGE_PROMPT + "\n\n<tool_output>\n" + text[:32_000] + "\n</tool_output>"
+    run = subprocess.run(agy_command(args.agy_cmd, args.agy_model, schema_file, args.agy_timeout),
+                         input=json.dumps({"event": "user", "message": {"role": "user", "content": prompt}}) + "\n",
+                         capture_output=True, text=True, encoding="utf-8", cwd=workspace,
+                         env={**os.environ, "HOME": home, "USERPROFILE": home}, timeout=args.agy_timeout + 15)
+    result = {}
+    for line in run.stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("event") == "result":
+            result = event.get("result") or {}
+    forget_agy_conversation(home, result.get("conversation_id"))
+    verdict = (result.get("structured_output") or {}).get("injection")
+    # A print timeout still exits 0 with status SUCCESS, so only a boolean verdict counts.
+    if run.returncode or result.get("status") != "SUCCESS" or not isinstance(verdict, bool):
+        # Only the exit code: agy's errors can quote the prompt, and so the judged text.
+        raise RuntimeError(f"agy exit {run.returncode}")
+    return verdict
+
+
+def forget_agy_conversation(home, conversation_id):
+    """Delete the files agy keeps for a conversation, each of which holds the judged text.
+
+    ponytail: a call killed before it reports its conversation_id leaves its files in the judge's
+    own home; sweep that folder by age if that ever piles up.
+    """
+    if not isinstance(conversation_id, str) or not re.fullmatch(r"[\w-]+", conversation_id):
+        return
+    root = os.path.join(home, ".gemini", "antigravity-cli")
+    for name in (f"conversations/{conversation_id}.db", f"annotations/{conversation_id}.pbtxt",
+                 f"presence/{conversation_id}.lock"):
+        try:
+            os.remove(os.path.join(root, name))
+        except OSError:
+            pass
+    shutil.rmtree(os.path.join(root, "brain", conversation_id), ignore_errors=True)
 
 
 def chat_judge(text, args):
@@ -164,7 +252,8 @@ def build_server(args, models, confirmers=(), screens=()):
                 return self._send(404, {"error": "not found"})
             self._send(200, {"models": [m.name for m in models], "confirm": [c.name for c in confirmers],
                              "screen": [s.name for s in screens], "claude": args.claude_model,
-                             "codex": args.codex_model, "chat": args.chat_model, "judge": args.judge_model})
+                             "codex": args.codex_model, "chat": args.chat_model, "agy": args.agy_model,
+                             "judge": args.judge_model})
 
         def do_POST(self):
             if self.path != "/score":
@@ -183,10 +272,11 @@ def build_server(args, models, confirmers=(), screens=()):
             except (ValueError, KeyError, TypeError):
                 return self._send(400, {"error": 'expected {"text": "..."}'})
             # Text from a Codex session is judged by Codex when a Codex judge is set up, everything else by
-            # the --chat-model when one is set, else by Claude.
+            # the --agy-model or --chat-model when one is set, else by Claude.
             judge_name = ("codex" if body.get("agent") == "codex" and args.codex_model
-                          else "chat" if args.chat_model else "claude")
-            judge_fn, judge_model = {"codex": (codex_judge, args.codex_model), "chat": (chat_judge, args.chat_model),
+                          else "agy" if args.agy_model else "chat" if args.chat_model else "claude")
+            judge_fn, judge_model = {"codex": (codex_judge, args.codex_model), "agy": (agy_judge, args.agy_model),
+                                     "chat": (chat_judge, args.chat_model),
                                      "claude": (claude_judge, args.claude_model)}[judge_name]
             started = time.perf_counter()
             with lock:
@@ -256,6 +346,10 @@ def main():
     ap.add_argument("--chat-url", default="http://127.0.0.1:11434/v1", help="the --chat-model's endpoint; "
                                                                              "default the local Ollama")
     ap.add_argument("--chat-timeout", type=float, default=30)
+    ap.add_argument("--agy-model", help="decide with the Antigravity CLI (`agy`) and this model instead of Claude, "
+                                        "e.g. gemini-3.8-flash-low; Codex sessions keep a --codex-model")
+    ap.add_argument("--agy-bin", default="agy", help="path to the agy CLI")
+    ap.add_argument("--agy-timeout", type=float, default=60)
     ap.add_argument("--judge-url", help="OpenAI-compatible base URL, e.g. http://127.0.0.1:11434/v1")
     ap.add_argument("--judge-model")
     ap.add_argument("--judge-timeout", type=float, default=20)
@@ -264,15 +358,17 @@ def main():
     args = ap.parse_args()
     if bool(args.judge_url) != bool(args.judge_model):
         ap.error("--judge-url and --judge-model go together")
-    if args.claude_model and args.chat_model:
-        ap.error("--claude-model and --chat-model both decide the same text; pick one")
-    if args.screen and not (args.claude_model or args.codex_model or args.chat_model):
-        ap.error("--screen only sends text to a judge, so it needs --claude-model, --chat-model or --codex-model")
-    args.claude_cmd, args.codex_cmd = [args.claude_bin], [args.codex_bin]
+    if sum(map(bool, (args.claude_model, args.chat_model, args.agy_model))) > 1:
+        ap.error("--claude-model, --chat-model and --agy-model all decide the same text; pick one")
+    if args.screen and not (args.claude_model or args.codex_model or args.chat_model or args.agy_model):
+        ap.error("--screen only sends text to a judge, so it needs --claude-model, --chat-model, --agy-model "
+                 "or --codex-model")
+    args.claude_cmd, args.codex_cmd, args.agy_cmd = [args.claude_bin], [args.codex_bin], [args.agy_bin]
     cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".cache")
     args.claude_cwd = os.path.join(cache, "judge-cwd")
     args.claude_config = os.path.join(cache, "judge-config")
     args.codex_cwd = os.path.join(cache, "codex-judge", "cwd")
+    args.agy_dir = os.path.join(cache, "agy-judge")
     from classifier import Classifier   # onnxruntime is only needed to actually serve
     from decision import Ollaya
     models = [Classifier(d) for d in args.model]
@@ -291,6 +387,7 @@ def main():
           f"{' + claude ' + args.claude_model if args.claude_model else ''}"
           f"{' + codex ' + args.codex_model if args.codex_model else ''}"
           f"{' + chat ' + args.chat_model if args.chat_model else ''}"
+          f"{' + agy ' + args.agy_model if args.agy_model else ''}"
           f"{' + judge ' + args.judge_model if args.judge_url else ''}", flush=True)
     server.serve_forever()
 

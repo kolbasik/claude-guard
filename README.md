@@ -191,7 +191,8 @@ copy of that version is reused) with `laya:en`, and installs two LaunchAgents so
 Ollaya and the server start at login and restart if they stop. Add
 `--claude-model claude-sonnet-5 --claude-token-file <file>` for the Claude judge, or
 `--chat-model gemma4:cloud` (with Ollama running there) to judge with an Ollama model
-instead, and `--codex-model gpt-6.1-sol` (with the `codex` CLI installed and logged in
+instead, or `--agy-model gemini-3.8-flash-low` (with `agy` installed and signed in there),
+and `--codex-model gpt-6.1-sol` (with the `codex` CLI installed and logged in
 there) to judge text from Codex sessions with Codex. It is safe to run again.
 
 ### Which model
@@ -284,35 +285,35 @@ same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
   means Haiku 4.5. When the pinned model is retired, the judge fails and its
   scores show `claude_error`.
 - `--codex-model gpt-6.1-sol` judges text from Codex sessions with a locked-down
-  `codex exec` instead (no user config, rules, hooks, plugins or saved session,
-  read-only sandbox, reasoning effort low); text from Claude Code sessions still
-  goes to Claude. Codex has no switch to turn its shell tool off, so the
-  read-only sandbox is what keeps an injected instruction from writing or
-  reaching the network. Measured 2026-10-10 with Codex CLI 0.162.1 on public
-  texts only (deepset and xTRam1; our own tickets and notes were not sent to
-  OpenAI), on 24 injections and 24 benign texts of the band:
+  `codex exec` instead (no user config, rules, hooks, plugins, ChatGPT apps,
+  skills or saved session; the shell, sub-agent and code-mode features off;
+  read-only sandbox; reasoning effort low); text from Claude Code sessions still
+  goes to Claude. The sandbox stays as the backstop for any tool a later Codex
+  adds. Measured, before the shell, sub-agents and code mode were switched off,
+  2026-10-10 and 2026-10-11 with
+  Codex CLI 0.162.1 on the public band (122 injections, 53 benign texts from
+  deepset and xTRam1; our own tickets and notes were not sent to OpenAI;
+  `bench/judge.py --band codex-<model> --public-only --also ollaya-laya-en:0.5`):
 
-  | Judge | Injections caught | False alarms | p50 |
-  |---|---|---|---|
-  | `claude-sonnet-5` (same texts) | 24 | 4 | 1.7 s |
-  | `gpt-5.6-sol` | 22 | 6 | 3.8 s |
-  | `gpt-5.6-terra` | 22 | 8 | 3.7 s |
-  | `gpt-5.6-luna` | 20 | 6 | 3.7 s |
-  | `gpt-6.1-sol` | 24 | 10 | 4.6 s |
-  | `gpt-6-astra` | 24 | 13 | 4.5 s |
-  | `gpt-6-sol` | 20 | 9 | 3.9 s |
-  | `gpt-6-luna` | 16 | 4 | 3.2 s |
+  | Judge | Injections caught | False alarms | p50 | Slowest |
+  |---|---|---|---|---|
+  | `claude-sonnet-5` (same texts) | 117 | 13 | 1.7 s | 4.6 s |
+  | `gpt-6.1-sol` | 117 | 27 | 5.1 s | 11.0 s |
+  | `gpt-5.6-sol` | 103 | 15 | 3.8 s | 12.4 s |
+  | `gpt-5.6-terra` | 100 | 15 | 3.7 s | 7.9 s |
+  | `gpt-5.6-luna` | 95 | 13 | 3.4 s | 10.9 s |
+  | `gpt-6-sol` | 99 | 19 | 3.6 s | 11.9 s |
+  | `gpt-6-luna` | 70 | 10 | 3.2 s | 14.5 s |
 
-  On the whole public band, `gpt-5.6-sol` caught 101 of 119 injections with 14
-  false alarms of 46; Sonnet 5 caught 115 with 11 on the same texts. So a Codex
-  judge misses more injections than Claude: use it when text from Codex
-  sessions must stay with OpenAI. `gpt-6.1-sol` is the suggested model: it
-  missed nothing in the sample (at 10 false alarms of 24), and by third-party
-  list prices of 2026-10-04 it costs $2 / $10 per million input / output
-  tokens against `gpt-5.6-sol`'s $5 / $30. Its full run was cut short by the
-  Codex usage limit, so its band numbers are still open. The judge draws on the
-  same ChatGPT usage limit as your Codex sessions: once that is used up, scores
-  show `codex_error` until it resets, and the classifier's flags still stand.
+  So a Codex judge misses more injections than Claude, or raises more false
+  alarms: use it when text from Codex sessions must stay with OpenAI.
+  `gpt-6.1-sol` is the suggested model: it caught as many as Sonnet 5 at twice
+  the false alarms, and by third-party list prices of 2026-10-04 it costs $2 /
+  $10 per million input / output tokens against `gpt-5.6-sol`'s $5 / $30.
+  `gpt-6-astra` was only screened on 48 texts of the band (24 of 24 caught, 13
+  false alarms of 24). The judge draws on the same ChatGPT usage limit as your
+  Codex sessions: once that is used up, scores show `codex_error` until it
+  resets, and the classifier's flags still stand.
 - `--judge-url` / `--judge-model` add an open-weight LLM as a further opinion,
   through any OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp).
   `--judge-above 0.5` asks it only when a classifier already scores 0.5 or more,
@@ -342,6 +343,23 @@ same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
   every text it judges goes wherever that endpoint sends it; for a `:cloud`
   model that is Ollama's cloud. Codex sessions keep a `--codex-model` judge if
   one is set. `--claude-model` and `--chat-model` are one or the other.
+- `--agy-model gemini-3.8-flash-low` makes the Antigravity CLI (`agy`) the
+  judge in Claude's place, reported as the score `agy`; Codex sessions keep a
+  `--codex-model` judge if one is set. It runs a tool-less custom agent with no
+  skills, plugins, rules, MCP servers or hooks, from its own home and workspace
+  folders under `.cache/agy-judge`, so nothing from your own agy setup loads.
+  The text goes on stdin, every text it judges goes to Google, and the copy agy
+  saves of each conversation is deleted once the verdict is in. Measured
+  2026-10-11 with agy 1.3.3 on the same public band:
+
+  | Judge | Injections caught | False alarms | p50 | Slowest |
+  |---|---|---|---|---|
+  | `claude-sonnet-5` (same texts) | 117 | 13 | 1.7 s | 4.6 s |
+  | `gemini-3.8-flash-low` | 111 | 18 | 7.9 s | 74.7 s |
+
+  Most of each call is agy starting up. `--claude-model`, `--chat-model` and
+  `--agy-model` are one or the other; on macOS the separate home folder is
+  untested.
 - Models are not bundled. Check a model's licence before sharing it; Prompt
   Guard 2, for one, is under the Llama 4 Community License.
 

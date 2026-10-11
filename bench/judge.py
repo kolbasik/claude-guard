@@ -1,4 +1,4 @@
-"""Measure a Claude or Codex judge on what the live cascade flags: does it keep real injections and clear false alarms?
+"""Measure a Claude, Codex, agy or chat-model judge on what the live cascade flags: does it keep real injections and clear false alarms?
 
   python judge.py [--positives 30] [--variant NAME ...]
   python judge.py --band sonnet-no-thinking      then: score.py --combine
@@ -40,14 +40,14 @@ VARIANTS = {
     "sonnet55-no-thinking": ("claude-sonnet-5-5", False, server.JUDGE_PROMPT),
     "haiku55-no-thinking": ("claude-haiku-5-5", False, server.JUDGE_PROMPT),
 }
-OTHER_JUDGES = ("codex-", "chat-")
+OTHER_JUDGES = ("codex-", "chat-", "agy-")
 
 
 def variant_name(v):
-    """A Claude variant, codex-<model> (`codex exec`, reasoning effort low) or chat-<model> (--chat-url)."""
+    """A Claude variant, codex-<model> (`codex exec`, reasoning effort low), agy-<model> (`agy`) or chat-<model> (--chat-url)."""
     if v in VARIANTS or v.startswith(OTHER_JUDGES):
         return v
-    raise argparse.ArgumentTypeError(f"{v}: use one of {', '.join(VARIANTS)}, codex-<model> or chat-<model>")
+    raise argparse.ArgumentTypeError(f"{v}: use one of {', '.join(VARIANTS)}, codex-<model>, agy-<model> or chat-<model>")
 
 
 def score_name(variant):
@@ -70,6 +70,7 @@ def main():
     ap.add_argument("--claude-bin", default="claude")
     ap.add_argument("--claude-token-file")
     ap.add_argument("--codex-bin", default="codex")
+    ap.add_argument("--agy-bin", default="agy")
     ap.add_argument("--chat-url", default="http://127.0.0.1:11434/v1",
                     help="OpenAI-compatible endpoint for chat-<model> judges; the default is a local Ollama")
     ap.add_argument("--jobs", type=int, default=1, help="texts judged at once")
@@ -153,6 +154,11 @@ def judge_all(indexes, variant, samples, args):
         return parallel(indexes, samples, args, lambda text, i: server.codex_judge(text, SimpleNamespace(
             codex_cmd=[args.codex_bin], codex_model=model, codex_timeout=120,
             codex_cwd=os.path.join(cache, "codex-judge", f"cwd-{i}"))))
+    if variant.startswith("agy-"):
+        model = variant[len("agy-"):]
+        judge_args = SimpleNamespace(agy_cmd=[args.agy_bin], agy_model=model, agy_timeout=120,
+                                     agy_dir=os.path.join(cache, "agy-judge"))
+        return parallel(indexes, samples, args, lambda text, i: server.agy_judge(text, judge_args))
     if variant.startswith("chat-"):
         model = variant[len("chat-"):]
         return parallel(indexes, samples, args, lambda text, i: server.judge(args.chat_url, model, text, 120) >= 0.5)
