@@ -324,8 +324,7 @@ same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
   skills or saved session; the shell, sub-agent and code-mode features off;
   read-only sandbox; reasoning effort low); text from Claude Code sessions still
   goes to Claude. The sandbox stays as the backstop for any tool a later Codex
-  adds. Measured, before the shell, sub-agents and code mode were switched off,
-  2026-10-10 and 2026-10-11 with
+  adds. Measured 2026-10-10 and 2026-10-11 with
   Codex CLI 0.162.1 on the public band (122 injections, 53 benign texts from
   deepset and xTRam1; our own tickets and notes were not sent to OpenAI;
   `bench/judge.py --band codex-<model> --public-only --also ollaya-laya-en:0.5`):
@@ -339,6 +338,12 @@ same token in the `CODING_AGENT_GUARD_TOKEN` environment variable.
   | `gpt-5.6-luna` | 95 | 13 | 3.4 s | 10.9 s |
   | `gpt-6-sol` | 99 | 19 | 3.6 s | 11.9 s |
   | `gpt-6-luna` | 70 | 10 | 3.2 s | 14.5 s |
+
+  These rows were measured before the shell, sub-agents and code mode were
+  switched off. Re-run with them off on 2026-10-11, `gpt-6.1-sol` caught 116
+  with 31 false alarms (p50 4.8 s, slowest 10.3 s): the same within run-to-run
+  noise, since the 5 texts whose verdict changed flip either way when judged
+  again, with either set of flags.
 
   So a Codex judge misses more injections than Claude, or raises more false
   alarms: use it when text from Codex sessions must stay with OpenAI.
