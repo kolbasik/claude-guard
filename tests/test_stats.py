@@ -78,7 +78,8 @@ class ProjectLogTests(unittest.TestCase):
             finally:
                 os.chdir(cwd)
         # Assert
-        self.assertEqual(os.path.normcase(path), os.path.normcase(os.path.join(tmp, ".claude/events.jsonl")))
+        # realpath: on macOS the temp folder is a /var symlink to /private/var, and the cwd comes back resolved
+        self.assertEqual(os.path.normcase(path), os.path.normcase(os.path.join(os.path.realpath(tmp), ".claude/events.jsonl")))
 
 
 class ReportTests(unittest.TestCase):
