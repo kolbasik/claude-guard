@@ -513,6 +513,28 @@ class HookProcessTests(unittest.TestCase):
         # Assert
         self.assertEqual(run.stdout.strip(), "venv in")
 
+    @unittest.skipUnless(shutil.which("git"), "needs git")
+    def test_every_shell_script_checks_out_with_lf(self):
+        # Arrange: the repo's shell scripts by shebang, and its .gitattributes in a fresh repo (the copy under test
+        # may not be a clone)
+        root = os.path.dirname(SCRIPTS)
+        scripts = []
+        for folder, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for name in files:
+                with open(os.path.join(folder, name), "rb") as f:
+                    first = f.read(64).split(b"\n")[0].rstrip()
+                if first.startswith(b"#!") and first.endswith(b"sh"):
+                    scripts.append(os.path.relpath(os.path.join(folder, name), root).replace(os.sep, "/"))
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(["git", "init", "-q", tmp], check=True)
+            shutil.copy(os.path.join(root, ".gitattributes"), tmp)
+            # Act
+            run = subprocess.run(["git", "-C", tmp, "check-attr", "eol", "--", *scripts], capture_output=True, text=True)
+        # Assert
+        self.assertEqual((len(scripts) >= 3, [l for l in run.stdout.splitlines() if not l.endswith(": eol: lf")]),
+                         (True, []))
+
 
 def agy_event(name, args, **extra):
     return {"toolCall": {"name": name, "args": args}, "conversationId": "conv-1", "stepIdx": 5,

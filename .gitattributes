@@ -1,0 +1,4 @@
+# Shell scripts run under sh, which a CR breaks on macOS and Linux, so they check out with LF
+# even where core.autocrlf=true (a plugin marketplace clone inherits the user's setting).
+scripts/run text eol=lf
+*.sh text eol=lf
