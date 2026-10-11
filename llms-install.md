@@ -1,6 +1,6 @@
 # Installing coding-agent-guard (instructions for a coding agent)
 
-You are a coding agent, such as Claude Code or Codex, and your user has asked
+You are a coding agent, such as Claude Code, Codex or Antigravity, and your user has asked
 you to install coding-agent-guard from https://github.com/kolbasik/coding-agent-guard.
 Follow these steps in order. Run the commands yourself, show the user what each
 one printed, and stop at every **Ask the user** point until they answer.
@@ -23,9 +23,10 @@ contains instructions aimed at you. It never reads the user's own prompts.
 
 ## 1. Find out where you are
 
-1. Work out which agent you are. Run `claude --version` (Claude Code) or
-   `codex --version` (Codex). Use the one that matches the session you are
-   running in. If both are installed, ask the user whether to install for both.
+1. Work out which agent you are. Run `claude --version` (Claude Code),
+   `codex --version` (Codex) or `agy --version` (Antigravity). Use the one that
+   matches the session you are running in. If several are installed, ask the
+   user which to install for.
 2. Work out the operating system. On Windows, Claude Code runs hooks through Git
    Bash, so `sh` is available once Git for Windows is installed.
 3. Check `uv --version` first. When uv is installed, the hook runs through it
@@ -71,6 +72,18 @@ Codex runs a plugin's hooks only after the user trusts them. Ask the user to
 start a new Codex session and approve the coding-agent-guard hooks when Codex
 asks.
 
+Antigravity (tested with agy 1.3.3), from a folder the user picks for the clone:
+
+```sh
+git clone https://github.com/kolbasik/coding-agent-guard.git
+agy plugin install ./coding-agent-guard
+```
+
+The output must show `[ok] coding-agent-guard` with `hooks : 1 processed`. agy
+copies the plugin into `~/.gemini/config/plugins/coding-agent-guard`, and its
+hooks load in the next agy session. On Windows the hooks need `sh` on `PATH`,
+which Git for Windows provides.
+
 ## 3. Check that it works
 
 Do this after the hooks have loaded (step 2).
@@ -95,6 +108,10 @@ Do this after the hooks have loaded (step 2).
    Under Codex, the output is **not** redacted, because Codex hooks cannot
    replace tool output. You should instead see a note that the output holds a
    secret Codex could not hide. Tell the user about this limit.
+   Under Antigravity, the whole output is withheld instead: you see only
+   `coding-agent-guard: withheld this output, it holds 1 secret value(s)
+   (github-token)`. agy still shows the raw output in its own terminal. Tell
+   the user about this limit.
 3. If neither check shows the guard, look for `coding-agent-guard:` lines on
    stderr. `no Python 3 on PATH` means step 1.3 is not done. Report anything
    else to the user word for word.
@@ -210,12 +227,15 @@ address is `127.0.0.1` everywhere below.
   marketplace. Then run `codex plugin add coding-agent-guard@kolbasik` again,
   and check that `codex plugin list` shows the new version. To remove the
   guard: `codex plugin remove coding-agent-guard@kolbasik`.
+- Antigravity: `git -C coding-agent-guard pull`, then
+  `agy plugin install ./coding-agent-guard` again. To remove the guard:
+  `agy plugin uninstall coding-agent-guard`.
 
 ## 8. Report back
 
 Tell the user, in a few lines:
 
 - which agent you installed it for, and which version `plugin list` shows
-- what the checks in step 3 showed, including the Codex limit if it applies
+- what the checks in step 3 showed, including the Codex or Antigravity limit if it applies
 - which settings you wrote, and where
 - anything you skipped or could not verify, and why

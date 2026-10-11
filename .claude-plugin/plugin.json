@@ -6,5 +6,5 @@
   "homepage": "https://github.com/kolbasik/coding-agent-guard",
   "repository": "https://github.com/kolbasik/coding-agent-guard",
   "license": "MIT",
-  "keywords": ["security", "prompt-injection", "secrets", "hooks", "claude-code", "codex"]
+  "keywords": ["security", "prompt-injection", "secrets", "hooks", "claude-code", "codex", "antigravity"]
 }

@@ -21,4 +21,6 @@ for py in python3 python; do
   exec "$p" "$here/guard.py" "$@"
 done
 echo "coding-agent-guard: no Python 3 on PATH; this call was not checked" >&2
+# Antigravity blocks the call, or drops its output, when a hook fails.
+case "$1" in agy-*) exit 0 ;; esac
 exit 1

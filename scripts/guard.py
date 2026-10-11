@@ -5,6 +5,10 @@
   guard.py out   PreToolUse. Denies a call that would send a secret or a personal ID
                  off the machine; flags injection and warn-rule hits in outgoing text
                  without blocking.
+  guard.py agy-in | agy-out | agy-warn
+                 The same for Antigravity (agy), whose hooks cannot redact output or add
+                 a note: output holding a secret is withheld whole, and notes wait for
+                 its PreInvocation hook (agy-warn) to reach the model before its next call.
 
 Reads the hook JSON on stdin and prints a decision on stdout, or nothing when
 there is nothing to say. Never prints a matched value, only its kind.
@@ -323,8 +327,9 @@ def on_output(event, rules):
     tool = event.get("tool_name", "")
     command = (event.get("tool_input") or {}).get("command", "")
     # Codex sends turn_id, and its PostToolUse cannot replace tool output: a secret there reaches the model.
-    codex = "turn_id" in event
-    rules.classifier.agent = "codex" if codex else "claude"
+    # Antigravity cannot replace it either, but it can withhold the whole output, so a secret never does.
+    codex, agy = "turn_id" in event, bool(event.get("agy"))
+    rules.classifier.agent = "codex" if codex else "agy" if agy else "claude"
     # Anything but a shell is web, MCP or API content, even from a tool whose input stays local.
     external = tool not in SHELLS or bool(rules.external.search(command))
     kinds, hits = [], []
@@ -344,7 +349,10 @@ def on_output(event, rules):
         rules.call.update(report.fingerprint(rules.sample_text))
         hits.extend(model_hits(rules.sample_text, rules.classifier))
     notes = []
-    if kinds and codex:
+    if kinds and agy:
+        notes.append(f"coding-agent-guard: withheld this output, it holds {len(kinds)} secret value(s) "
+                     f"({', '.join(_unique(kinds))}). Get what you need without printing the values.")
+    elif kinds and codex:
         notes.append(f"coding-agent-guard: this output holds {len(kinds)} secret value(s) ({', '.join(_unique(kinds))}) "
                      "that Codex could not hide from you. Do not repeat, store or send them.")
     elif kinds:
@@ -359,6 +367,8 @@ def on_output(event, rules):
                              "scores": rules.classifier.scores, "classifier_error": rules.classifier.error,
                              # the redacted text: a hash of a short secret could be guessed back
                              **report.fingerprint("\n".join(strings(updated)))})
+    if agy:
+        return {"withhold": notes[0]} if kinds else {"note": "\n".join(notes)} if notes else None
     out = {}
     if updated != response and not codex:
         out["updatedToolOutput"] = updated
@@ -589,12 +599,96 @@ SAMPLE_CHARS = 50_000
 def _project_path(path):
     return path if os.path.isabs(path) else os.path.join(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd(), path)
 
+
+def from_agy(event):
+    """An Antigravity hook event in the Claude Code shape the handlers read."""
+    call = event.get("toolCall") or {}
+    name, args = call.get("name", ""), call.get("args") or {}
+    tool, data = {
+        "run_command": ("PowerShell" if os.name == "nt" else "Bash", {"command": args.get("CommandLine", "")}),
+        "read_url_content": ("WebFetch", {"url": args.get("Url", "")}),
+        "search_web": ("WebSearch", {"query": args.get("query", "")}),
+        "call_mcp_tool": (f"mcp__{args.get('ServerName', '')}__{args.get('ToolName', '')}", args.get("Arguments") or {}),
+    }.get(name, (name, args))
+    workspace = (event.get("workspacePaths") or [None])[0]
+    return {"tool_name": tool, "tool_input": data, "cwd": args.get("Cwd") or workspace,
+            "session_id": event.get("conversationId"), "agy": True}
+
+
+def agy_output(event):
+    """What a tool call returned, from the step files agy writes before PostToolUse: its output and, for a
+    fetched page, the page itself, which the model reads later. None when the step left no files."""
+    if not event.get("artifactDirectoryPath"):
+        return None
+    steps = os.path.join(event["artifactDirectoryPath"], ".system_generated", "steps", str(event.get("stepIdx")))
+    texts = [t for t in (read_text(os.path.join(steps, name)) for name in ("output.txt", "content.md")) if t]
+    return "\n".join(texts) if texts else None
+
+
+def _pending_path(event):
+    """Where notes wait for the model's next call; Antigravity's PreToolUse and PostToolUse cannot add a note."""
+    conversation = event.get("conversationId")
+    if not isinstance(conversation, str) or not re.fullmatch(r"[\w-]+", conversation):
+        return None
+    return os.path.join(os.path.expanduser("~"), ".claude", "coding-agent-guard", "agy-pending", conversation + ".txt")
+
+
+def queue_note(event, note):
+    path = _pending_path(event)
+    if path:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(note + "\n")
+
+
+def take_notes(event):
+    """PreInvocation: the notes queued since the model's last call, handed over once."""
+    path = _pending_path(event)
+    if not path or not os.path.isfile(path):
+        return {}
+    taken = path + ".taken"
+    os.replace(path, taken)   # a note queued from here on waits for the next call instead of being lost
+    with open(taken, encoding="utf-8") as f:
+        notes = f.read().strip()
+    os.remove(taken)
+    return {"injectSteps": [{"ephemeralMessage": notes}]} if notes else {}
+
+
+def agy_reply(mode, raw, result):
+    """Antigravity's hook contract: PreToolUse denies or says nothing (`{}` would deny); PostToolUse withholds
+    the output by failing with the reason on stderr, or says nothing; every other note waits for PreInvocation."""
+    result = result or {}
+    if mode == "agy-out":
+        out = result.get("hookSpecificOutput") or {}
+        if out.get("permissionDecision") == "deny":
+            sys.stdout.write(json.dumps({"decision": "deny", "reason": out["permissionDecisionReason"]}))
+        elif out.get("additionalContext"):
+            queue_note(raw, out["additionalContext"])
+        return
+    if result.get("withhold"):
+        sys.stderr.write(result["withhold"] + "\n")
+        sys.exit(2)
+    if result.get("note"):
+        queue_note(raw, result["note"])
+
+
 def main():
-    handler = {"in": on_output, "out": on_input}.get(sys.argv[1] if len(sys.argv) > 1 else "")
-    if handler is None:
-        sys.stderr.write("usage: guard.py in|out < hook-event.json\n")
+    mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    handler = {"in": on_output, "out": on_input, "agy-in": on_output, "agy-out": on_input}.get(mode)
+    if handler is None and mode != "agy-warn":
+        sys.stderr.write("usage: guard.py in|out|agy-in|agy-out|agy-warn < hook-event.json\n")
         sys.exit(1)
     event = json.loads(sys.stdin.buffer.read().decode("utf-8") or "{}")
+    if mode == "agy-warn":
+        sys.stdout.write(json.dumps(take_notes(event)))
+        return
+    raw = event
+    if mode.startswith("agy-"):
+        event = from_agy(raw)
+        if mode == "agy-in":
+            event["tool_response"] = agy_output(raw)
+        if not os.environ.get("CLAUDE_PROJECT_DIR") and raw.get("workspacePaths"):
+            os.environ["CLAUDE_PROJECT_DIR"] = raw["workspacePaths"][0]
     if not os.environ.get("CLAUDE_PROJECT_DIR") and event.get("cwd"):
         os.environ["CLAUDE_PROJECT_DIR"] = event["cwd"]   # Codex sets none; its cwd is the session's project
     cfg = load_config()
@@ -602,7 +696,9 @@ def main():
     started = time.perf_counter()
     handled = handler(event, rules)
     result = finish(event, rules, cfg, handled, hook_ms=round(1000 * (time.perf_counter() - started)))
-    if result:
+    if mode.startswith("agy-"):
+        agy_reply(mode, raw, result)
+    elif result:
         sys.stdout.write(json.dumps(result))
 
 
@@ -617,4 +713,5 @@ if __name__ == "__main__":
             tb = tb.tb_next
         sys.stderr.write(f"coding-agent-guard: internal error {type(e).__name__} at line {tb.tb_lineno}; "
                          "this call was not checked\n")
-        sys.exit(1)
+        # Antigravity blocks the call, or drops its output, when a hook exits non-zero.
+        sys.exit(0 if (sys.argv[1:2] or [""])[0].startswith("agy-") else 1)

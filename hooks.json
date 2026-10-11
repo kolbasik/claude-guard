@@ -1,0 +1,19 @@
+{
+  "coding-agent-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|read_url_content|call_mcp_tool",
+        "hooks": [{ "type": "command", "command": "sh ./scripts/run agy-out", "timeout": 20 }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "run_command|read_url_content|search_web|call_mcp_tool",
+        "hooks": [{ "type": "command", "command": "sh ./scripts/run agy-in", "timeout": 60 }]
+      }
+    ],
+    "PreInvocation": [
+      { "type": "command", "command": "sh ./scripts/run agy-warn", "timeout": 10 }
+    ]
+  }
+}

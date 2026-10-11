@@ -26,6 +26,15 @@ context. Treat it as exposed: never repeat it, write it to a file, put it in a
 command or send it anywhere. The user has been warned; if the task needs the
 value, a script reads it from its store instead.
 
+## "coding-agent-guard: withheld this output, it holds ... secret value(s)"
+
+Under Antigravity the hook cannot redact, so it withholds the whole output.
+The secret did not reach you. Get what you need without printing the value:
+filter it out (`grep -v`, `Select-String -NotMatch`), print names or lengths
+only, or let a script use the value without echoing it. Never try to recover
+the value itself. Notes about instruction-like text arrive under Antigravity
+just before your next step rather than with the output; read them the same way.
+
 ## "coding-agent-guard: blocked, this call would send ..."
 
 The call carried a secret or personal ID to somewhere off the machine: a

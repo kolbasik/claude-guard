@@ -1,8 +1,9 @@
 # coding-agent-guard
 
-A plugin for Claude Code and Codex that checks what reaches the coding agent
-from outside and what the agent sends out. Codex gets all of it except output
-redaction (see [Codex](#codex)).
+A plugin for Claude Code, Codex and Antigravity that checks what reaches the
+coding agent from outside and what the agent sends out. Codex gets all of it
+except output redaction (see [Codex](#codex)); Antigravity withholds output that
+holds a secret instead of redacting it (see [Antigravity](#antigravity)).
 
 | When | Checks | On a hit |
 |---|---|---|
@@ -69,6 +70,17 @@ codex plugin add coding-agent-guard@kolbasik
 Codex runs a plugin's hooks only after you trust them, so start `codex` once
 and approve them. See [Codex](#codex) for what differs there.
 
+Antigravity (`agy`) installs it from a clone (tested with agy 1.3.3):
+
+```sh
+git clone https://github.com/kolbasik/coding-agent-guard.git
+agy plugin install ./coding-agent-guard
+```
+
+That copies the clone into `~/.gemini/config/plugins/coding-agent-guard`; after
+a `git pull`, install it again to update. See [Antigravity](#antigravity) for
+what differs there.
+
 To run it without installing, clone it
 (`git clone https://github.com/kolbasik/coding-agent-guard.git`) and register
 `scripts/guard.py in` as a `PostToolUse` hook and `scripts/guard.py out` as a
@@ -100,6 +112,29 @@ warning (and a desktop notification with `notify: "desktop"`). Everything else
 works as under Claude Code: secrets leaving the machine are blocked, and
 instruction-like text gets a note. Codex sets no `CLAUDE_PROJECT_DIR`, so the
 project settings are found from the session's working folder.
+
+## Antigravity
+
+Antigravity's hooks can neither redact a tool's output nor add a note beside
+it, so under `agy` the guard does what they allow (measured with agy 1.3.3 on
+2026-10-11):
+
+- Output holding a secret is withheld whole: the model gets only the guard's
+  reason and can run the command again so that it prints no values. agy itself
+  still shows the raw output in its terminal and keeps it in its step files.
+- Notes (instruction-like text in output from outside, warn-rule hits in
+  outgoing text) reach the model through agy's `PreInvocation` hook, just before
+  its next call. They wait in `~/.claude/coding-agent-guard/agy-pending/`.
+- Secrets leaving the machine are blocked as under Claude Code, and the model
+  sees the reason. MCP calls are checked as `mcp__<server>__<tool>`, so the
+  same `text_tools` and `local_tools` patterns apply.
+- agy blocks a call, or drops its output, when a hook fails or times out, so
+  under agy the guard lets the call through on an internal error.
+
+The `PreInvocation` hook starts Python before every model call: about 0.24 s
+each on a Windows ARM64 VM with the venv (2026-10-11). agy sets no
+`CLAUDE_PROJECT_DIR`; the project settings are found from the session's
+workspace folder.
 
 ## Configure
 
