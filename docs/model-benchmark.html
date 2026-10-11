@@ -93,6 +93,10 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
   p{orphans:3;widows:3}
   .tblwrap,.note,.key,.pipeline{break-inside:avoid;page-break-inside:avoid}
   section{break-inside:avoid;page-break-inside:avoid;margin:0 0 6px}
+  /* Chrome fragments a grid across pages badly (overlapping and vanishing blocks): stack plain blocks in print. */
+  .wrap,section{display:block}
+  .wrap>*+*{margin-top:22px}
+  section>*+*{margin-top:14px}
   tr,thead{break-inside:avoid;page-break-inside:avoid}
   thead{display:table-header-group}
   .tblwrap{overflow:visible !important}
@@ -104,7 +108,7 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
 
 <div class="wrap">
 <header>
-  <span class="eyebrow">coding-agent-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02 · Codex and Ollama cloud judges added 2026-10-10</span>
+  <span class="eyebrow">coding-agent-guard · injection detection · measured 2026-09-29 · Ollama decision models added 2026-10-02 · Codex and Ollama cloud judges added 2026-10-10 · Codex full band and Gemini via agy 2026-10-11</span>
   <h1>Which model should read what comes from outside</h1>
   <p class="lede">The live setup scores every text from outside with Horizon-Labs' classifier and laya:en, and lets Claude Sonnet decide everything either finds suspect. It catches 83%, 94% and 79% of the injections in three held-out test sets, the last one hidden inside tool output, and wrongly flags 7 of our 240 own texts. A clean outside read costs about a quarter of a second; roughly 40% of them wait about 2 seconds more for Claude.</p>
   <p class="meta">Scoring server: Apple M5 Pro, 24 GB, on the Mac that hosts the Windows VM. Hook: Windows 11 ARM64 VM, 8 GB. Models run locally; only the session's own provider sees text off the machine: Claude for Claude Code sessions, and Codex for Codex sessions when the server runs a Codex judge.</p>
@@ -259,9 +263,10 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
 </section>
 
 <section>
-  <span class="eyebrow">Other judges · 2026-10-10</span>
+  <span class="eyebrow">Other judges · 2026-10-10 and 2026-10-11</span>
   <h2>gemma4:cloud judges as well as Sonnet 5; Codex models miss more</h2>
-  <p>Each judge read the texts the live server would hand it: whatever Horizon-Labs scores 0.5 to 0.9, plus whatever laya:en scores 0.5 or more, from the deepset and xTRam1 test splits. Only public texts were sent, because these judges run outside Anthropic: 175 texts, 122 of them injections. Every model got the judge prompt Claude gets. Codex models ran through Codex CLI 0.162.1 at reasoning effort low, Ollama cloud models through Ollama 0.40.1; Sonnet 5's verdicts and times are from the 2026-10-07 band run. <strong>gemma4:cloud</strong> made as many wrong calls as Sonnet 5, 18 of 175, and answered faster, but the two disagree on 16 texts.</p>
+  <p>Each judge read the texts the live server would hand it: whatever Horizon-Labs scores 0.5 to 0.9, plus whatever laya:en scores 0.5 or more, from the deepset and xTRam1 test splits. Only public texts were sent, because these judges run outside Anthropic: 175 texts, 122 of them injections. Every model got the judge prompt Claude gets. Codex models ran through Codex CLI 0.162.1 at reasoning effort low, Ollama cloud models through Ollama 0.40.1; Sonnet 5's verdicts and times are from the 2026-10-07 band run. <strong>gemma4:cloud</strong> made as many wrong calls as Sonnet 5, 18 of 175, and answered faster, but the two disagree on 16 texts. <strong>gemini-3.8-flash-low</strong>, run through the Antigravity CLI on 2026-10-11, made 29 wrong calls, fewer than any Codex model, but each call starts agy afresh: a median of 7.9 s and one call of 74.7 s.</p>
+  <p class="contd eyebrow">Other judges · continued</p>
   <div class="tblwrap"><table>
     <thead><tr><th>Judge</th><th class="n">Caught</th><th class="n">False alarms</th><th class="n">Wrong</th><th class="n">Same verdict as Sonnet 5</th><th class="n">Median</th><th class="n">Slowest</th></tr></thead>
     <tbody>
@@ -269,25 +274,24 @@ code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:0 4p
       <tr><td>gemma4:cloud<small>Ollama cloud</small></td><td class="n">117 / 122</td><td class="n">13 / 53</td><td class="n good">18</td><td class="n">159 / 175</td><td class="n good">1.0 s</td><td class="n">4.1 s</td></tr>
       <tr><td>glm-5.3:cloud<small>Ollama cloud</small></td><td class="n">115 / 122</td><td class="n">17 / 53</td><td class="n">24</td><td class="n">161 / 175</td><td class="n bad">8.1 s</td><td class="n bad">67.7 s</td></tr>
       <tr><td>glm-5.3-flash:cloud<small>Ollama cloud; 1 call timed out at 120 s</small></td><td class="n good">119 / 121</td><td class="n">22 / 53</td><td class="n">24</td><td class="n">158 / 174</td><td class="n">3.4 s</td><td class="n bad">120 s</td></tr>
+      <tr><td>gemini-3.8-flash-low<small>Antigravity CLI 1.3.3</small></td><td class="n">111 / 122</td><td class="n">18 / 53</td><td class="n">29</td><td class="n">156 / 175</td><td class="n bad">7.9 s</td><td class="n bad">74.7 s</td></tr>
       <tr><td>deepseek-v4.1-flash:cloud<small>Ollama cloud</small></td><td class="n">117 / 122</td><td class="n bad">27 / 53</td><td class="n">32</td><td class="n">151 / 175</td><td class="n">1.9 s</td><td class="n">7.2 s</td></tr>
-      <tr><td>gpt-5.6-sol<small>Codex CLI; 10 calls hit the usage limit</small></td><td class="n bad">101 / 119</td><td class="n">14 / 46</td><td class="n">32</td><td class="n">142 / 165</td><td class="n">3.8 s</td><td class="n">12.4 s</td></tr>
+      <tr><td>gpt-6.1-sol<small>Codex CLI</small></td><td class="n">117 / 122</td><td class="n bad">27 / 53</td><td class="n">32</td><td class="n">153 / 175</td><td class="n">5.1 s</td><td class="n">11.0 s</td></tr>
+      <tr><td>gpt-5.6-sol<small>Codex CLI</small></td><td class="n">103 / 122</td><td class="n">15 / 53</td><td class="n">34</td><td class="n">151 / 175</td><td class="n">3.8 s</td><td class="n">12.4 s</td></tr>
       <tr><td>deepseek-v4-pro:cloud<small>Ollama cloud</small></td><td class="n bad">107 / 122</td><td class="n">19 / 53</td><td class="n">34</td><td class="n">143 / 175</td><td class="n">3.4 s</td><td class="n">13.7 s</td></tr>
+      <tr><td>gpt-5.6-terra<small>Codex CLI</small></td><td class="n">100 / 122</td><td class="n">15 / 53</td><td class="n">37</td><td class="n">144 / 175</td><td class="n">3.7 s</td><td class="n">7.9 s</td></tr>
+      <tr><td>gpt-5.6-luna<small>Codex CLI</small></td><td class="n">95 / 122</td><td class="n">13 / 53</td><td class="n">40</td><td class="n">137 / 175</td><td class="n">3.4 s</td><td class="n">10.9 s</td></tr>
+      <tr><td>gpt-6-sol<small>Codex CLI</small></td><td class="n">99 / 122</td><td class="n">19 / 53</td><td class="n">42</td><td class="n">139 / 175</td><td class="n">3.6 s</td><td class="n">11.9 s</td></tr>
+      <tr><td>gpt-6-luna<small>Codex CLI</small></td><td class="n bad">70 / 122</td><td class="n">10 / 53</td><td class="n bad">62</td><td class="n">115 / 175</td><td class="n">3.2 s</td><td class="n">14.5 s</td></tr>
     </tbody>
   </table></div>
-  <p>Seven Codex models were first screened on an even sample of 24 injections and 24 benign texts from the same band. None matched Sonnet 5 there, which caught all 24 with 4 false alarms. <strong>gpt-6.1-sol</strong> is the suggested Codex judge: it caught all 24 and, by third-party list prices of 2026-10-04, costs $2 / $10 per million input / output tokens against gpt-5.6-sol's $5 / $30. Its full run was cut short by the Codex usage limit.</p>
-  <div class="tblwrap"><table>
-    <thead><tr><th>Codex model</th><th class="n">Caught</th><th class="n">False alarms</th><th class="n">Median</th></tr></thead>
-    <tbody>
-      <tr class="live"><td>gpt-6.1-sol<span class="chip">suggested</span></td><td class="n good">24 / 24</td><td class="n">10 / 24</td><td class="n">4.6 s</td></tr>
-      <tr><td>gpt-5.6-sol</td><td class="n">22 / 24</td><td class="n">6 / 24</td><td class="n">3.8 s</td></tr>
-      <tr><td>gpt-5.6-terra</td><td class="n">22 / 24</td><td class="n">8 / 24</td><td class="n">3.7 s</td></tr>
-      <tr><td>gpt-6-astra</td><td class="n good">24 / 24</td><td class="n bad">13 / 24</td><td class="n">4.5 s</td></tr>
-      <tr><td>gpt-6-sol</td><td class="n">20 / 24</td><td class="n">9 / 24</td><td class="n">3.9 s</td></tr>
-      <tr><td>gpt-5.6-luna</td><td class="n">20 / 24</td><td class="n">6 / 24</td><td class="n">3.7 s</td></tr>
-      <tr><td>gpt-6-luna</td><td class="n bad">16 / 24</td><td class="n">4 / 24</td><td class="n">3.2 s</td></tr>
-    </tbody>
-  </table></div>
-  <p class="note">The Codex judge runs as <code>codex exec</code> with no user config, rules, hooks, plugins or saved session, in a read-only sandbox; Codex has no switch to turn its shell tool off. It takes text from Codex sessions only, and draws on the same ChatGPT usage limit as those sessions. Since 0.1.2 an Ollama model can take Claude's place as the judge (<code>--chat-model gemma4:cloud</code>), deciding the grey band and clearing false alarms as Claude does; a <code>:cloud</code> model then sends every text it judges to Ollama's cloud. On the same 48-text sample, gemma4:cloud caught 23 with 7 false alarms.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Codex and agy judges · 2026-10-11</span>
+  <h2>Only gpt-6.1-sol catches as many as Sonnet 5, at twice the false alarms</h2>
+  <p>Seven Codex models were first screened on 2026-10-10 on an even sample of 24 injections and 24 benign texts; six were then run on the whole band on 2026-10-11 (gpt-6-astra, 24 caught with 13 false alarms on the sample, was not). Every Codex model missed more than Sonnet 5 except <strong>gpt-6.1-sol</strong>, which caught as many, 117 of 122, at twice its false alarms, 27 of 53. It stays the suggested Codex judge: missing an injection costs more than a false alarm, and by third-party list prices of 2026-10-04 it costs $2 / $10 per million input / output tokens against gpt-5.6-sol's $5 / $30. The 2026-10-11 medians and slowest times cover each model's 127 new calls; the 48 sample verdicts were reused.</p>
+  <p class="note">The Codex judge runs as <code>codex exec</code> with no user config, rules, hooks, plugins, ChatGPT apps, skills or saved session, with the shell, sub-agent and code-mode features off, in a read-only sandbox. The Codex rows above were measured before the shell, sub-agents and code mode were switched off. It takes text from Codex sessions only, and draws on the same ChatGPT usage limit as those sessions. Since 0.1.2 an Ollama model can take Claude's place as the judge (<code>--chat-model gemma4:cloud</code>), deciding the grey band and clearing false alarms as Claude does; a <code>:cloud</code> model then sends every text it judges to Ollama's cloud. On the same 48-text sample, gemma4:cloud caught 23 with 7 false alarms. The agy judge (<code>--agy-model gemini-3.8-flash-low</code>) also takes Claude's place: a tool-less custom agent with no skills, plugins, rules, MCP servers or hooks, run with its own home folder; every text it judges goes to Google, and agy's saved copy of each conversation is deleted after the verdict.</p>
 </section>
 
 <section>
