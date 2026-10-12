@@ -98,13 +98,14 @@ def load_config():
 def known_secrets(cfg):
     """Values to redact wherever they appear: secret-named env vars and configured store entries."""
     values = [v for k, v in os.environ.items() if k in cfg["secret_env"] or SECRET_ENV_NAME.search(k)]
-    if os.name == "nt" and cfg["credential_manager_filters"]:
-        import credman
+    store = "credman" if os.name == "nt" else "keychain" if sys.platform == "darwin" else None
+    if store and cfg["credential_manager_filters"]:
+        reader = __import__(store)
         for target_filter in cfg["credential_manager_filters"]:
             try:
-                values += credman.secret_values(target_filter)
+                values += reader.secret_values(target_filter)
             except OSError as e:
-                sys.stderr.write(f"coding-agent-guard: Credential Manager unreadable ({type(e).__name__}); patterns still apply\n")
+                sys.stderr.write(f"coding-agent-guard: {store} unreadable ({type(e).__name__}); patterns still apply\n")
     # Short, numeric, path-like or plain lowercase-word values ("password", "changeit")
     # would redact ordinary text; longest first so a secret that contains another is
     # replaced whole.

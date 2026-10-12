@@ -23,7 +23,7 @@ It never checks your own prompts.
   Placeholders such as `${DB_PASSWORD}` or `<password>` are left alone.
 - **Known values:** any environment variable whose name contains token, secret,
   password, api key, private key or credential, plus Windows Credential Manager
-  entries you list. These match exactly, whatever their shape.
+  entries or macOS keychain generic passwords you list. These match exactly, whatever their shape.
 - **Personal IDs:** Finnish henkilötunnus, check character verified.
 - **Injection:** "ignore previous instructions" and variants, fake role tags
   and lines, "don't tell the user", requests to send credentials somewhere,
@@ -150,7 +150,7 @@ are read in that order, and every list extends the built-in one.
 | `local_tools` | Tool-name regexes whose input stays on this machine, so secret shapes in it are not blocked |
 | `secret_patterns` | Extra `{"name", "pattern"}` secret shapes; a group named `v` marks the secret part |
 | `secret_env` | Extra environment variable names whose values are secrets |
-| `credential_manager_filters` | Windows Credential Manager target filters whose values are secrets, e.g. `"myapp/*"` |
+| `credential_manager_filters` | Name filters whose values are secrets, e.g. `"myapp/*"`: Windows Credential Manager target names, or on macOS keychain generic-password service names, read through `/usr/bin/security` (so only items that trust it, such as ones it wrote, are read without a prompt; an ssh session cannot read them) |
 | `warn` | `{"name", "pattern", "message"?, "commands"?, "block"?}` rules for outgoing text; `commands` limits a rule to matching commands, `"block": true` denies the call instead of adding a note |
 | `classifier_url` | Base URL of a scoring server (below); empty turns the model check off |
 | `classifier_threshold` | Score at or above which a model flags the output; default `0.9` |
