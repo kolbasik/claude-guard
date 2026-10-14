@@ -10,12 +10,40 @@ import glob
 import json
 import os
 import re
+import shutil
+import sys
+import tempfile
 
 import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
 
 POSITIVE = re.compile(r"inject|jailbreak|malicious|unsafe|attack", re.I)
+
+
+def mapped(onnx):
+    """The model re-saved with its weights in a side file, built once in mapped/ beside it.
+
+    ONNX Runtime maps such weights from disk instead of copying them into memory: the 641 MB
+    base model then costs ~180 MB of memory instead of ~1 GB, at ~5% slower scoring.
+    """
+    out = os.path.join(os.path.dirname(onnx), "mapped")
+    model = os.path.join(out, "model.onnx")
+    if os.path.exists(model) and os.path.getmtime(model) >= os.path.getmtime(onnx):
+        return model
+    tmp = tempfile.mkdtemp(prefix=".mapped-", dir=os.path.dirname(onnx))
+    try:
+        so = ort.SessionOptions()
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC   # saves no CPU-specific fusions
+        so.optimized_model_filepath = os.path.join(tmp, "model.onnx")
+        so.add_session_config_entry("session.optimized_model_external_initializers_file_name", "model.onnx.data")
+        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "1024")
+        ort.InferenceSession(onnx, so, providers=["CPUExecutionProvider"])
+        shutil.rmtree(out, ignore_errors=True)
+        os.replace(tmp, out)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return model
 
 
 class Classifier:
@@ -34,7 +62,14 @@ class Classifier:
         self.tokenizer = Tokenizer.from_file(os.path.join(model_dir, "tokenizer.json"))
         self.tokenizer.no_padding()
         self.tokenizer.enable_truncation(self.window, stride=self.window // 4)
-        self.session = ort.InferenceSession(onnx[0], providers=["CPUExecutionProvider"])
+        try:
+            path, so = mapped(onnx[0]), ort.SessionOptions()
+            # Prepacking copies every weight into memory, which would undo the mapping.
+            so.add_session_config_entry("session.disable_prepacking", "1")
+        except Exception as e:   # a read-only or full disk: serve anyway, from the in-memory model
+            print(f"{self.name}: no mapped copy ({type(e).__name__}: {e}); loading it into memory", file=sys.stderr)
+            path, so = onnx[0], None
+        self.session = ort.InferenceSession(path, so, providers=["CPUExecutionProvider"])
 
     def score(self, text):
         """Highest attack probability over the text's windows, 0..1."""
